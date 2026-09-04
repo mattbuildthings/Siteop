@@ -1,4 +1,5 @@
 export interface ExtractedData {
+  job_number?: string;
   category: string;
   materials: Array<{
     item: string;
@@ -28,11 +29,13 @@ export interface DiaryEntry {
   photo_url?: string | null;
   transcription?: string | null;
   extracted_data?: ExtractedData | null;
+  job_number?: string;
   status: EntryStatus;
   submitted_at?: string | null;
   // Transient/Joined fields
   is_pending_sync?: boolean;
   entry_flag?: EntryFlag | null;
+  entry_flags?: EntryFlag[];
 }
 
 export interface EntryFlag {
@@ -56,6 +59,7 @@ export interface DailyDigest {
 export interface TodoItem {
   id: string;
   entry_id?: string | null;
+  job_number?: string | null;
   week_start: string; // YYYY-MM-DD, Monday of the ISO week
   text: string;
   due_date?: string | null;
@@ -82,4 +86,5 @@ export interface OfflineEntry {
   audioMimeType?: string;
   photoMimeType?: string;
   retryCount: number;
+  jobNumber?: string;
 }

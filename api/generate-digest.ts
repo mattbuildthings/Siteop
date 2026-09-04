@@ -66,8 +66,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const flagInfo = flagsByEntryId[e.id];
       const isFlagged = flagInfo?.is_flagged || false;
       const bullet = flagInfo?.summary_bullet || e.extracted_data?.summary_bullet || e.transcription?.substring(0, 100) || 'Ghi nhận công trình';
+      const jobNum = e.extracted_data?.job_number ? `[Mã: ${e.extracted_data.job_number}] ` : '';
 
-      promptContent += `### Mục #${idx + 1} ${isFlagged ? '[⚠️ CẦN CHÚ Ý / FLAGGED]' : ''}\n`;
+      promptContent += `### Mục #${idx + 1} ${jobNum}${isFlagged ? '[⚠️ CẦN CHÚ Ý / FLAGGED]' : ''}\n`;
       promptContent += `- Tóm tắt ngắn: ${bullet}\n`;
 
       if (isFlagged && e.transcription) {

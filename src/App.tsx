@@ -11,7 +11,30 @@ import { getOfflineQueue, processOfflineQueue } from './lib/offlineStore';
 import { User } from '@supabase/supabase-js';
 
 export function App() {
-  const [currentRoute, setCurrentRoute] = useState<'capture' | 'diary' | 'digest' | 'sync'>('capture');
+  const [currentRoute, setCurrentRouteState] = useState<'capture' | 'diary' | 'digest' | 'sync'>(() => {
+    const hash = window.location.hash.replace('#/', '').replace('#', '');
+    if (['capture', 'diary', 'digest', 'sync'].includes(hash)) {
+      return hash as any;
+    }
+    return 'capture';
+  });
+
+  const setCurrentRoute = (route: 'capture' | 'diary' | 'digest' | 'sync') => {
+    window.location.hash = `#/${route}`;
+    setCurrentRouteState(route);
+  };
+
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash.replace('#/', '').replace('#', '');
+      if (['capture', 'diary', 'digest', 'sync'].includes(hash)) {
+        setCurrentRouteState(hash as any);
+      }
+    };
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
+
   const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
   const [offlineCount, setOfflineCount] = useState<number>(0);
   const [entries, setEntries] = useState<DiaryEntry[]>([]);

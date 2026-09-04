@@ -101,36 +101,36 @@ export const SyncRoute: React.FC<SyncRouteProps> = ({ entries, onRefresh }) => {
       {/* Screen Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-bold text-ink tracking-tight">Quản Trị Đồng Bộ</h2>
-          <p className="text-xs text-ink-soft">Đồng bộ Google Drive Markdown Vault (Matt Admin)</p>
+          <h2 className="text-xl font-bold text-[#f3f5f4] tracking-tight">Quản Trị Đồng Bộ</h2>
+          <p className="text-xs text-[#77818d]">Đồng bộ Google Drive Markdown Vault (Matt Admin)</p>
         </div>
 
-        <div className="pill px-2 py-1 bg-warning-soft text-warning border border-ink">
+        <div className="pill px-2.5 py-1 bg-[#d4bd65]/15 text-[#d4bd65] border border-[#d4bd65]/30">
           <ShieldCheck className="w-3.5 h-3.5" /> Admin Only
         </div>
       </div>
 
       {/* Sync Card Action */}
       <div className="card p-6 space-y-4 text-center">
-        <div className="w-14 h-14 rounded-[0.9rem] bg-ink flex items-center justify-center mx-auto text-paper">
+        <div className="w-14 h-14 rounded-[14px] bg-[#101319] border border-[#293039] flex items-center justify-center mx-auto text-[#6af0b6]">
           <HardDrive className="w-7 h-7" />
         </div>
 
         <div className="space-y-1">
-          <h3 className="text-base font-bold text-ink">Google Drive Vault Export</h3>
-          <p className="text-xs text-ink-soft">
-            Thư mục Folder ID: <code className="text-ink font-mono text-[11px] bg-card-alt border border-ink/30 px-1 rounded">1so41_3Eb...Xo5Xr6</code>
+          <h3 className="text-base font-bold text-[#f3f5f4]">Google Drive Vault Export</h3>
+          <p className="text-xs text-[#77818d]">
+            Thư mục Folder ID: <code className="text-[#6af0b6] font-mono text-[11px] bg-[#101319] border border-[#293039] px-1.5 py-0.5 rounded">1so41_3Eb...Xo5Xr6</code>
           </p>
         </div>
 
         <button
           onClick={handleManualSync}
           disabled={isSyncing}
-          className="btn-primary w-full py-3.5 text-sm active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+          className="w-full py-3.5 rounded-card bg-[#6af0b6] hover:bg-[#5be0a5] text-[#101319] font-bold text-sm tracking-wide shadow-[0_0_20px_rgba(106,240,182,0.2)] active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer"
         >
           {isSyncing ? (
             <>
-              <RefreshCw className="w-5 h-5 animate-spin" />
+              <RefreshCw className="w-5 h-5 animate-spin text-[#101319]" />
               <span>Đang Xuất Google Drive...</span>
             </>
           ) : (
@@ -144,13 +144,13 @@ export const SyncRoute: React.FC<SyncRouteProps> = ({ entries, onRefresh }) => {
 
       {/* Sync Logs Table / History */}
       <div className="card p-5 space-y-3">
-        <div className="flex items-center justify-between border-b border-ink/15 pb-2">
-          <h3 className="label-micro text-ink">
+        <div className="flex items-center justify-between border-b border-[#293039] pb-2">
+          <h3 className="label-micro text-[#f3f5f4]">
             Lịch Sử 5 Lần Sync Gần Nhất
           </h3>
           <button
             onClick={fetchSyncLogs}
-            className="p-1 text-ink-soft hover:text-ink transition"
+            className="p-1 text-[#77818d] hover:text-[#f3f5f4] transition cursor-pointer"
             title="Làm mới log"
           >
             <RefreshCw className="w-3.5 h-3.5" />
@@ -158,34 +158,34 @@ export const SyncRoute: React.FC<SyncRouteProps> = ({ entries, onRefresh }) => {
         </div>
 
         {loadingLogs ? (
-          <div className="py-4 text-center text-xs text-ink-soft">Đang tải lịch sử sync...</div>
+          <div className="py-4 text-center text-xs text-[#77818d]">Đang tải lịch sử sync...</div>
         ) : logs.length === 0 ? (
-          <div className="py-4 text-center text-xs text-ink-soft">Chưa có lịch sử đồng bộ trong CSDL</div>
+          <div className="py-4 text-center text-xs text-[#77818d]">Chưa có lịch sử đồng bộ trong CSDL</div>
         ) : (
           <div className="space-y-2">
             {logs.map((log) => (
               <div
                 key={log.id}
-                className="p-2.5 rounded-[0.7rem] bg-card-alt border border-ink flex items-center justify-between text-xs"
+                className="p-2.5 rounded-[12px] bg-[#12161c] border border-[#293039] flex items-center justify-between text-xs"
               >
                 <div className="flex items-center gap-2">
                   {log.status === 'success' ? (
-                    <CheckCircle2 className="w-4 h-4 text-positive shrink-0" />
+                    <CheckCircle2 className="w-4 h-4 text-[#6af0b6] shrink-0" />
                   ) : (
-                    <XCircle className="w-4 h-4 text-danger shrink-0" />
+                    <XCircle className="w-4 h-4 text-[#e16d7d] shrink-0" />
                   )}
                   <div>
-                    <p className="font-semibold text-ink">
+                    <p className="font-semibold text-[#f3f5f4]">
                       {log.status === 'success' ? `Đồng bộ ${log.entries_count || 0} mục` : 'Thất bại'}
                     </p>
-                    <p className="text-[10px] text-ink-faint">
+                    <p className="text-[10px] text-[#77818d]">
                       {new Date(log.synced_at).toLocaleString('vi-VN')}
                     </p>
                   </div>
                 </div>
 
                 {log.error_message && (
-                  <span className="text-[10px] text-danger max-w-[120px] truncate" title={log.error_message}>
+                  <span className="text-[10px] text-[#e16d7d] max-w-[120px] truncate" title={log.error_message}>
                     {log.error_message}
                   </span>
                 )}
@@ -197,25 +197,25 @@ export const SyncRoute: React.FC<SyncRouteProps> = ({ entries, onRefresh }) => {
 
       {/* Preview 5 Synced Entries */}
       <div className="card p-5 space-y-3">
-        <h3 className="label-micro text-ink border-b border-ink/15 pb-2">
+        <h3 className="label-micro text-[#f3f5f4] border-b border-[#293039] pb-2">
           5 Nhật Ký Mới Nhất Chuẩn Bị Sync
         </h3>
 
         {last5Entries.length === 0 ? (
-          <p className="text-xs text-ink-soft py-2">Chưa có bản ghi nào.</p>
+          <p className="text-xs text-[#77818d] py-2">Chưa có bản ghi nào.</p>
         ) : (
           <div className="space-y-2">
             {last5Entries.map((entry, idx) => (
               <div
                 key={entry.id}
-                className="p-2.5 rounded-[0.7rem] bg-card-alt border border-ink/40 flex items-center gap-2.5 text-xs"
+                className="p-2.5 rounded-[12px] bg-[#12161c] border border-[#293039] flex items-center gap-2.5 text-xs"
               >
-                <FileText className="w-4 h-4 text-ink-soft shrink-0" />
+                <FileText className="w-4 h-4 text-[#77818d] shrink-0" />
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium text-ink truncate">
+                  <p className="font-medium text-[#f3f5f4] truncate">
                     {entry.transcription || entry.extracted_data?.category || 'Nhật ký không có tiêu đề'}
                   </p>
-                  <p className="text-[10px] text-ink-faint">
+                  <p className="text-[10px] text-[#77818d]">
                     {new Date(entry.created_at).toLocaleString('vi-VN')}
                   </p>
                 </div>

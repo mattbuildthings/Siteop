@@ -115,14 +115,30 @@ YÊU CẦU TRẢ VỀ JSON THUẦN TÚY (không kèm markdown):
       finalFlagReason = 'gemini_judgment';
     }
 
+    let existingJobNumber: string | undefined;
+
     if (entryId && supabaseUrl && supabaseAnonKey) {
       const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+      // Fetch existing entry to preserve job_number
+      const { data: existingEntry } = await supabase
+        .from('diary_entries')
+        .select('extracted_data')
+        .eq('id', entryId)
+        .maybeSingle();
+
+      existingJobNumber = (existingEntry as any)?.extracted_data?.job_number;
+
+      const mergedExtracted = {
+        ...extractedData,
+        ...(existingJobNumber ? { job_number: existingJobNumber } : {})
+      };
 
       // Update extracted_data on diary_entries
       await supabase
         .from('diary_entries')
         .update({
-          extracted_data: extractedData
+          extracted_data: mergedExtracted
         })
         .eq('id', entryId);
 
@@ -139,6 +155,7 @@ YÊU CẦU TRẢ VỀ JSON THUẦN TÚY (không kèm markdown):
 
     return res.status(200).json({
       ...extractedData,
+      ...(existingJobNumber ? { job_number: existingJobNumber } : {}),
       is_flagged: finalIsFlagged,
       flag_reason: finalFlagReason
     });

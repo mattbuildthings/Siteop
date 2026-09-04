@@ -1,48 +1,57 @@
 @import "tailwindcss";
 
 /* ------------------------------------------------------------------
-   Design tokens — flat, bordered, paper-and-ink construction journal.
-   Adapted from a flat/bordered fintech reference: hard 1px ink borders,
-   no blur/glass, big tight-tracked numerals, solid pill badges.
+   Design tokens — Halid · Treasury visual direction.
+   Financial Apps / Work & Wealth precision dark palette:
+   - Deep obsidian canvas (#101319)
+   - Slate container cards (#181d24) with 1px border (#293039, radius 17px)
+   - Crisp white-smoke typography (#f3f5f4) + muted steel (#77818d)
+   - Vibrant mint (#6af0b6), honey gold (#d4bd65), coral rose (#e16d7d)
 ------------------------------------------------------------------- */
 @theme {
-  --font-sans: 'Inter Tight', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-sans: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 
-  /* Paper (background) */
-  --color-paper: #f2eee3;
-  --color-paper-soft: #e7e0cd;
+  /* Canvas / Background */
+  --color-paper: #101319;
+  --color-paper-soft: #141820;
 
-  /* Ink (text / borders) */
-  --color-ink: #1b231e;
-  --color-ink-soft: #5c6a60;
-  --color-ink-faint: #97a397;
+  /* Ink (text & borders) */
+  --color-ink: #f3f5f4;
+  --color-ink-soft: #77818d;
+  --color-ink-faint: #48525e;
 
   /* Surfaces */
-  --color-card: #fffdf8;
-  --color-card-alt: #eef0dd;
+  --color-card: #181d24;
+  --color-card-alt: #1e242d;
+  --color-card-dark: #0b0d12;
 
-  /* Brand accent — safety amber */
-  --color-accent: #f2a93b;
-  --color-accent-soft: #fbe7c2;
-  --color-accent-ink: #1b231e;
+  /* Borders */
+  --color-border: #293039;
+  --color-border-subtle: #303842;
+
+  /* Brand accent — Halid Vibrant Mint */
+  --color-accent: #6af0b6;
+  --color-accent-soft: rgba(106, 240, 182, 0.12);
+  --color-accent-ink: #101319;
 
   /* Semantic */
-  --color-positive: #2e6b49;
-  --color-positive-soft: #dcebd9;
-  --color-warning: #b0501b;
-  --color-warning-soft: #f5ddc9;
-  --color-danger: #a83232;
-  --color-danger-soft: #f3d9d9;
-  --color-info: #2c4a63;
-  --color-info-soft: #dbe4ea;
+  --color-positive: #6af0b6;
+  --color-positive-soft: rgba(106, 240, 182, 0.12);
+  --color-warning: #d4bd65;
+  --color-warning-soft: rgba(212, 189, 101, 0.12);
+  --color-danger: #e16d7d;
+  --color-danger-soft: rgba(225, 109, 125, 0.12);
+  --color-info: #8da6ff;
+  --color-info-soft: rgba(141, 166, 255, 0.12);
 
-  --radius-card: 1.25rem;
+  --radius-card: 17px;
   --radius-pill: 999px;
 }
 
 @layer base {
   html {
     -webkit-text-size-adjust: 100%;
+    color-scheme: dark;
   }
 
   body {
@@ -62,28 +71,28 @@
 
   ::selection {
     background-color: var(--color-accent);
-    color: var(--color-ink);
+    color: var(--color-accent-ink);
   }
 }
 
 @layer components {
-  /* Flat bordered card — the core surface of every screen */
+  /* Precision slate card */
   .card {
     background-color: var(--color-card);
-    border: 1px solid var(--color-ink);
+    border: 1px solid var(--color-border);
     border-radius: var(--radius-card);
   }
 
   .card-alt {
     background-color: var(--color-card-alt);
-    border: 1px solid var(--color-ink);
+    border: 1px solid var(--color-border);
     border-radius: var(--radius-card);
   }
 
   .card-ink {
-    background-color: var(--color-ink);
-    color: var(--color-paper);
-    border: 1px solid var(--color-ink);
+    background-color: #0b0d12;
+    color: var(--color-ink);
+    border: 1px solid var(--color-border);
     border-radius: var(--radius-card);
   }
 
@@ -118,11 +127,12 @@
 
   .btn-primary {
     background-color: var(--color-accent);
-    color: var(--color-ink);
-    border: 1px solid var(--color-ink);
+    color: var(--color-accent-ink);
+    border: 1px solid var(--color-accent);
     border-radius: var(--radius-pill);
     font-weight: 700;
     white-space: nowrap;
+    transition: all 0.15s ease;
   }
 
   .btn-primary:active {
@@ -130,9 +140,9 @@
   }
 
   .btn-ink {
-    background-color: var(--color-ink);
-    color: var(--color-paper);
-    border: 1px solid var(--color-ink);
+    background-color: #242b35;
+    color: var(--color-ink);
+    border: 1px solid var(--color-border-subtle);
     border-radius: var(--radius-pill);
     font-weight: 700;
     white-space: nowrap;
@@ -141,15 +151,21 @@
   .btn-outline {
     background-color: transparent;
     color: var(--color-ink);
-    border: 1px solid var(--color-ink);
+    border: 1px solid var(--color-border-subtle);
     border-radius: var(--radius-pill);
     font-weight: 600;
     white-space: nowrap;
+    transition: all 0.15s ease;
+  }
+
+  .btn-outline:hover {
+    border-color: var(--color-border);
+    background-color: rgba(255, 255, 255, 0.04);
   }
 
   .field {
     background-color: var(--color-card);
-    border: 1px solid var(--color-ink);
+    border: 1px solid var(--color-border);
     border-radius: var(--radius-card);
     color: var(--color-ink);
   }

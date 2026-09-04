@@ -59,90 +59,105 @@ export const TodoItemRow: React.FC<TodoItemRowProps> = ({
     <div
       ref={setNodeRef}
       style={style}
-      className={`flex items-center gap-2 p-2.5 rounded-[0.85rem] border border-ink text-xs transition ${
-        item.is_done ? 'bg-paper-soft/50' : 'bg-card-alt'
+      className={`flex flex-col gap-1.5 p-2.5 rounded-[12px] border border-[#293039] text-xs transition ${
+        item.is_done ? 'bg-[#12161c] opacity-60' : 'bg-[#181d24]'
       }`}
     >
-      {draggable ? (
-        <button
-          {...attributes}
-          {...listeners}
-          className="p-1 text-ink-soft hover:text-ink cursor-grab active:cursor-grabbing shrink-0 touch-none"
-          aria-label="Kéo để sắp xếp"
-        >
-          <GripVertical className="w-4 h-4" />
-        </button>
-      ) : (
-        <span className="w-6 shrink-0" />
-      )}
-
-      <button
-        onClick={() => onToggleDone(item)}
-        className="shrink-0 text-ink-soft hover:text-positive"
-        aria-label={item.is_done ? 'Đánh dấu chưa xong' : 'Đánh dấu đã xong'}
-      >
-        {item.is_done ? (
-          <CheckCircle2 className="w-4.5 h-4.5 text-positive" />
+      {/* Top Row: Actions, Checkbox, Text & Delete */}
+      <div className="flex items-center gap-2">
+        {draggable ? (
+          <button
+            {...attributes}
+            {...listeners}
+            className="p-1 text-[#77818d] hover:text-[#f3f5f4] cursor-grab active:cursor-grabbing shrink-0 touch-none"
+            aria-label="Kéo để sắp xếp"
+          >
+            <GripVertical className="w-4 h-4" />
+          </button>
         ) : (
-          <Circle className="w-4.5 h-4.5" />
+          <span className="w-6 shrink-0" />
         )}
-      </button>
 
-      {isEditing ? (
-        <textarea
-          autoFocus
-          rows={2}
-          value={draftText}
-          onChange={(e) => setDraftText(e.target.value)}
-          onBlur={commitEdit}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              commitEdit();
-            } else if (e.key === 'Escape') {
-              cancelEdit();
-            }
-          }}
-          className="flex-1 bg-card border border-ink rounded-[0.6rem] px-2 py-1 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-accent resize-none"
-        />
-      ) : (
-        <p
-          onClick={() => setIsEditing(true)}
-          className={`flex-1 leading-snug cursor-text ${
-            item.is_done ? 'text-ink-faint line-through' : 'text-ink'
-          }`}
-        >
-          {item.text}
-        </p>
-      )}
-
-      {!isEditing && (
         <button
-          onClick={() => setIsEditing(true)}
-          className="shrink-0 p-1 text-ink-soft hover:text-ink"
-          aria-label="Sửa nội dung"
+          onClick={() => onToggleDone(item)}
+          className="shrink-0 text-[#77818d] hover:text-[#6af0b6] transition cursor-pointer"
+          aria-label={item.is_done ? 'Đánh dấu chưa xong' : 'Đánh dấu đã xong'}
         >
-          <Pencil className="w-3.5 h-3.5" />
+          {item.is_done ? (
+            <CheckCircle2 className="w-4.5 h-4.5 text-[#6af0b6]" />
+          ) : (
+            <Circle className="w-4.5 h-4.5" />
+          )}
         </button>
-      )}
 
-      <div className="flex items-center gap-1 shrink-0">
-        <Calendar className="w-3.5 h-3.5 text-ink" />
-        <input
-          type="date"
-          value={item.due_date || ''}
-          onChange={(e) => onDueDateChange(item, e.target.value)}
-          className="bg-transparent text-[11px] text-ink focus:outline-none w-[92px]"
-        />
+        {isEditing ? (
+          <textarea
+            autoFocus
+            rows={2}
+            value={draftText}
+            onChange={(e) => setDraftText(e.target.value)}
+            onBlur={commitEdit}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                commitEdit();
+              } else if (e.key === 'Escape') {
+                cancelEdit();
+              }
+            }}
+            className="flex-1 bg-[#101319] border border-[#303842] rounded-[8px] px-2 py-1 text-xs text-[#f3f5f4] focus:outline-none focus:border-[#6af0b6] resize-none"
+          />
+        ) : (
+          <p
+            onClick={() => setIsEditing(true)}
+            className={`flex-1 leading-snug cursor-text ${
+              item.is_done ? 'text-[#48525e] line-through' : 'text-[#f3f5f4]'
+            }`}
+          >
+            {item.text}
+          </p>
+        )}
+
+        {!isEditing && (
+          <button
+            onClick={() => setIsEditing(true)}
+            className="shrink-0 p-1 text-[#77818d] hover:text-[#f3f5f4] transition cursor-pointer"
+            aria-label="Sửa nội dung"
+          >
+            <Pencil className="w-3.5 h-3.5" />
+          </button>
+        )}
+
+        <button
+          onClick={() => onDelete(item)}
+          className="shrink-0 p-1 text-[#77818d] hover:text-[#e16d7d] transition cursor-pointer"
+          aria-label="Xóa mục"
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+        </button>
       </div>
 
-      <button
-        onClick={() => onDelete(item)}
-        className="shrink-0 p-1 text-ink-soft hover:text-danger"
-        aria-label="Xóa mục"
-      >
-        <Trash2 className="w-3.5 h-3.5" />
-      </button>
+      {/* Bottom Row: Due date on the left, Job Number on the bottom right */}
+      <div className="flex items-center justify-between pl-8 pr-1 pt-1 border-t border-[#293039]/40 text-[11px]">
+        <div className="flex items-center gap-1.5 text-[#77818d]">
+          <Calendar className="w-3.5 h-3.5 text-[#77818d]" />
+          <input
+            type="date"
+            value={item.due_date || ''}
+            onChange={(e) => onDueDateChange(item, e.target.value)}
+            className="bg-transparent text-[11px] text-[#f3f5f4] focus:outline-none w-[95px] cursor-pointer"
+          />
+        </div>
+
+        {item.job_number && (
+          <span
+            className="font-mono text-[11px] font-bold text-[#6af0b6] bg-[#101319] px-2 py-0.5 rounded-[6px] border border-[#293039] shrink-0 tracking-wider"
+            title="Mã công việc"
+          >
+            {item.job_number}
+          </span>
+        )}
+      </div>
     </div>
   );
 };

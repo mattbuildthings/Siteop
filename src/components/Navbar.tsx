@@ -31,34 +31,30 @@ export const Navbar: React.FC<NavbarProps> = ({
   return (
     <>
       {/* Top Header Bar */}
-      <header className="sticky top-0 z-40 w-full bg-paper/95 backdrop-saturate-150 px-4 py-3 flex items-center justify-between border-b border-ink">
-        <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-[0.7rem] bg-ink flex items-center justify-center font-bold text-paper text-sm shrink-0">
-            SO
+      <header className="sticky top-0 z-40 w-full bg-[#101319]/90 backdrop-blur-md px-4 py-3 flex items-center justify-between border-b border-[#293039]">
+        <div className="flex items-center gap-2">
+          <div className="text-xl font-bold tracking-tight text-[#f3f5f4] flex items-center">
+            <span>siteop</span>
+            <span className="text-[#6af0b6] text-2xl leading-none">.</span>
           </div>
-          <div className="leading-tight">
-            <h1 className="text-base font-bold tracking-tight text-ink flex items-center gap-1.5">
-              Siteop
-              <span className="label-micro px-1.5 py-0.5 rounded-pill bg-accent-soft text-ink border border-ink normal-case font-bold tracking-normal">
-                PWA
-              </span>
-            </h1>
-          </div>
+          <span className="text-[10px] font-bold tracking-wider px-2 py-0.5 rounded-full bg-[#181d24] text-[#77818d] border border-[#303842] uppercase">
+            FIELD OS
+          </span>
         </div>
 
         <div className="flex items-center gap-2">
           {/* Online/Offline Status Indicator */}
           <div
-            className={`pill px-2.5 py-1 border ${
+            className={`pill px-2.5 py-1 text-xs font-semibold border ${
               isOnline
-                ? 'bg-positive-soft text-positive border-ink'
-                : 'bg-warning-soft text-warning border-ink'
+                ? 'bg-[#6af0b6]/15 text-[#6af0b6] border-[#6af0b6]/30'
+                : 'bg-[#d4bd65]/15 text-[#d4bd65] border-[#d4bd65]/30'
             }`}
           >
             {isOnline ? <Wifi className="w-3.5 h-3.5" /> : <WifiOff className="w-3.5 h-3.5" />}
             <span>{isOnline ? 'Online' : 'Offline'}</span>
             {offlineCount > 0 && (
-              <span className="bg-ink text-paper font-bold px-1.5 rounded-pill text-[10px] leading-4">
+              <span className="bg-[#6af0b6] text-[#101319] font-bold px-1.5 rounded-full text-[10px] leading-4">
                 {offlineCount}
               </span>
             )}
@@ -68,7 +64,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           {user ? (
             <button
               onClick={onSignOut}
-              className="pill btn-outline px-2.5 py-1.5"
+              className="pill px-2.5 py-1.5 text-xs bg-[#181d24] text-[#f3f5f4] border border-[#303842] hover:border-[#6af0b6]/40 transition"
               title={`Logged in as ${user.email}`}
             >
               <User className="w-3.5 h-3.5" />
@@ -76,7 +72,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               <LogOut className="w-3.5 h-3.5 opacity-70" />
             </button>
           ) : (
-            <button onClick={onOpenAuth} className="pill btn-primary px-3 py-1.5">
+            <button onClick={onOpenAuth} className="pill btn-primary px-3 py-1.5 text-xs">
               <LogIn className="w-3.5 h-3.5" />
               <span>Đăng nhập</span>
             </button>
@@ -86,7 +82,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
       {/* Bottom Floating Navigation (4 Tabs: Ghi Nhận / Nhật Ký / Tổng Hợp / Đồng Bộ) */}
       <nav
-        className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 w-[94%] max-w-md card p-1.5"
+        className="fixed bottom-3 left-1/2 -translate-x-1/2 z-40 w-[94%] max-w-md bg-[#0b0d12]/95 backdrop-blur-xl border border-[#293039] rounded-[20px] p-1.5 shadow-2xl"
         aria-label="Điều hướng chính"
       >
         <div className="grid grid-cols-4 gap-1">
@@ -97,14 +93,19 @@ export const Navbar: React.FC<NavbarProps> = ({
                 key={id}
                 onClick={() => onNavigate(id)}
                 aria-current={isActive ? 'page' : undefined}
-                className={`flex flex-col items-center justify-center gap-0.5 py-2 rounded-[0.85rem] transition-all ${
+                className={`flex flex-col items-center justify-center gap-1 py-2 rounded-[14px] transition-all cursor-pointer ${
                   isActive
-                    ? 'bg-accent text-ink font-bold border border-ink'
-                    : 'text-ink-soft hover:text-ink hover:bg-paper-soft border border-transparent'
+                    ? 'text-[#6af0b6] font-bold bg-[#6af0b6]/10'
+                    : 'text-[#77818d] hover:text-[#f3f5f4] hover:bg-[#181d24]'
                 }`}
               >
-                <Icon className="w-4 h-4" />
-                <span className="text-[11px]">{label}</span>
+                <div className="relative flex items-center justify-center">
+                  <Icon className="w-4 h-4" />
+                  {isActive && (
+                    <span className="absolute -top-1 -right-1.5 w-1.5 h-1.5 rounded-full bg-[#6af0b6] shadow-[0_0_8px_#6af0b6]" />
+                  )}
+                </div>
+                <span className="text-[10px] tracking-tight">{label}</span>
               </button>
             );
           })}

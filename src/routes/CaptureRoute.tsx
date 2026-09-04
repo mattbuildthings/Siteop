@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { Mic, Square, Play, Pause, Camera, Trash2, Send, RefreshCw } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { addToOfflineQueue, blobToBase64, uploadMediaToSupabase } from '../lib/offlineStore';
+import { addToOfflineQueue, blobToBase64, uploadMediaToSupabase, getNextJobNumber } from '../lib/offlineStore';
 import { processAudioWithGemini } from '../lib/geminiFallback';
 import { Toast } from '../components/Toast';
 
@@ -154,16 +154,19 @@ export const CaptureRoute: React.FC<CaptureRouteProps> = ({ isOnline, onEntrySav
       const voiceBase64 = audioBlob ? await blobToBase64(audioBlob) : undefined;
       const photoBase64 = photoBlob ? await blobToBase64(photoBlob) : undefined;
 
+      const nextJobNumber = await getNextJobNumber();
+
       if (!isOnline) {
         addToOfflineQueue({
           voiceBlobBase64: voiceBase64,
           photoBlobBase64: photoBase64,
           audioMimeType: audioBlob?.type,
-          photoMimeType: photoBlob?.type
+          photoMimeType: photoBlob?.type,
+          jobNumber: nextJobNumber
         });
 
         setToast({
-          message: 'Đã lưu offline vào thiết bị (sẽ tự đồng bộ khi có mạng)',
+          message: `Đã lưu offline (${nextJobNumber}) vào thiết bị (sẽ tự đồng bộ khi có mạng)`,
           type: 'success',
           open: true
         });
@@ -188,7 +191,10 @@ export const CaptureRoute: React.FC<CaptureRouteProps> = ({ isOnline, onEntrySav
             voice_url: voiceUrl,
             photo_url: photoUrl,
             status: 'draft',
-            submitted_at: new Date().toISOString()
+            submitted_at: new Date().toISOString(),
+            extracted_data: {
+              job_number: nextJobNumber
+            }
           })
           .select()
           .single();
@@ -199,16 +205,17 @@ export const CaptureRoute: React.FC<CaptureRouteProps> = ({ isOnline, onEntrySav
             voiceBlobBase64: voiceBase64,
             photoBlobBase64: photoBase64,
             audioMimeType: audioBlob?.type,
-            photoMimeType: photoBlob?.type
+            photoMimeType: photoBlob?.type,
+            jobNumber: nextJobNumber
           });
           setToast({
-            message: 'Đã lưu offline thành công',
+            message: `Đã lưu offline (${nextJobNumber}) thành công`,
             type: 'info',
             open: true
           });
         } else {
           setToast({
-            message: 'Saved! Đã lưu nhật ký thành công.',
+            message: `Saved! Đã lưu nhật ký ${nextJobNumber} thành công.`,
             type: 'success',
             open: true
           });
@@ -256,37 +263,37 @@ export const CaptureRoute: React.FC<CaptureRouteProps> = ({ isOnline, onEntrySav
 
         {/* STEP 1: VOICE RECORDING */}
         <div className="space-y-4">
-          <div className="flex items-center justify-between border-b border-ink/15 pb-2">
-            <span className="flex items-center gap-2 label-micro text-ink normal-case">
-              <span className="w-5 h-5 rounded-full bg-ink text-paper flex items-center justify-center text-[11px] font-bold">
+          <div className="flex items-center justify-between border-b border-[#293039] pb-2">
+            <span className="flex items-center gap-2 text-xs font-bold text-[#f3f5f4]">
+              <span className="w-5 h-5 rounded-full bg-[#293039] text-[#6af0b6] flex items-center justify-center text-[11px] font-bold">
                 1
               </span>
               Thu Âm Giọng Nói
             </span>
-            <span className="font-mono text-ink font-bold text-xs pill bg-accent-soft border border-ink px-2 py-0.5">
+            <span className="font-mono text-[#6af0b6] font-bold text-xs pill bg-[#6af0b6]/15 border border-[#6af0b6]/30 px-2 py-0.5">
               {formatTime(recordingTime)}
             </span>
           </div>
 
-          <div className="flex flex-col items-center justify-center py-2">
+          <div className="flex flex-col items-center justify-center py-4">
             {!isRecording ? (
               <button
                 type="button"
                 onClick={startRecording}
                 disabled={isSubmitting}
-                className="group relative w-22 h-22 rounded-full bg-accent border border-ink flex items-center justify-center hover:scale-105 active:scale-95 transition-all disabled:opacity-50"
+                className="group relative w-24 h-24 rounded-full bg-[#e16d7d] hover:bg-[#d65f70] shadow-[0_0_28px_rgba(225,109,125,0.35)] flex items-center justify-center hover:scale-105 active:scale-95 transition-all cursor-pointer disabled:opacity-50"
               >
-                <Mic className="w-9 h-9 text-ink" />
+                <Mic className="w-10 h-10 text-[#101319]" />
               </button>
             ) : (
               <button
                 type="button"
                 onClick={stopRecording}
-                className="relative w-22 h-22 rounded-full bg-danger border border-ink flex items-center justify-center active-pulse active:scale-95 transition-all"
+                className="relative w-24 h-24 rounded-full bg-[#e16d7d] shadow-[0_0_28px_rgba(225,109,125,0.4)] flex items-center justify-center active-pulse active:scale-95 transition-all cursor-pointer"
               >
                 <div className="w-full h-full rounded-full flex flex-col items-center justify-center gap-1">
-                  <Square className="w-7 h-7 text-paper fill-paper" />
-                  <span className="text-[10px] font-bold text-paper tracking-wider">DỪNG THU</span>
+                  <Square className="w-8 h-8 text-[#101319] fill-[#101319]" />
+                  <span className="text-[10px] font-black text-[#101319] tracking-wider">DỪNG THU</span>
                 </div>
               </button>
             )}
@@ -294,20 +301,20 @@ export const CaptureRoute: React.FC<CaptureRouteProps> = ({ isOnline, onEntrySav
 
           {/* Audio Player Preview */}
           {audioUrl && !isRecording && (
-            <div className="p-3 rounded-card bg-card-alt border border-ink flex items-center justify-between gap-3">
+            <div className="p-3 rounded-card bg-[#12161c] border border-[#293039] flex items-center justify-between gap-3">
               <button
                 onClick={togglePlayAudio}
-                className="w-9 h-9 rounded-[0.7rem] bg-accent border border-ink text-ink flex items-center justify-center shrink-0"
+                className="w-9 h-9 rounded-[0.7rem] bg-[#6af0b6] text-[#101319] flex items-center justify-center shrink-0 font-bold hover:bg-[#5be0a5] transition cursor-pointer"
               >
-                {isPlayingAudio ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
+                {isPlayingAudio ? <Pause className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 ml-0.5 fill-current" />}
               </button>
               <div className="flex-1 text-left">
-                <p className="text-xs font-semibold text-ink">Bản ghi sẵn sàng</p>
-                <p className="text-[10px] text-ink-soft">Thời lượng: {formatTime(recordingTime)}</p>
+                <p className="text-xs font-semibold text-[#f3f5f4]">Bản ghi sẵn sàng</p>
+                <p className="text-[10px] text-[#77818d]">Thời lượng: {formatTime(recordingTime)}</p>
               </div>
               <button
                 onClick={clearAudio}
-                className="p-1.5 text-ink-soft hover:text-danger rounded-[0.6rem] hover:bg-paper"
+                className="p-1.5 text-[#77818d] hover:text-[#e16d7d] rounded-[0.6rem] hover:bg-[#1e242d] transition"
                 title="Xóa ghi âm"
               >
                 <Trash2 className="w-4 h-4" />
@@ -324,9 +331,9 @@ export const CaptureRoute: React.FC<CaptureRouteProps> = ({ isOnline, onEntrySav
 
         {/* STEP 2: PHOTO CAPTURE / UPLOAD (OPTIONAL) */}
         <div className="space-y-3 pt-2">
-          <div className="flex items-center justify-between border-b border-ink/15 pb-2">
-            <span className="flex items-center gap-2 label-micro text-ink normal-case">
-              <span className="w-5 h-5 rounded-full bg-ink text-paper flex items-center justify-center text-[11px] font-bold">
+          <div className="flex items-center justify-between border-b border-[#293039] pb-2">
+            <span className="flex items-center gap-2 text-xs font-bold text-[#f3f5f4]">
+              <span className="w-5 h-5 rounded-full bg-[#293039] text-[#6af0b6] flex items-center justify-center text-[11px] font-bold">
                 2
               </span>
               Chụp / Đính Kèm Ảnh (Tùy chọn)
@@ -334,11 +341,11 @@ export const CaptureRoute: React.FC<CaptureRouteProps> = ({ isOnline, onEntrySav
           </div>
 
           {photoPreviewUrl ? (
-            <div className="relative rounded-card overflow-hidden border border-ink group">
+            <div className="relative rounded-card overflow-hidden border border-[#293039] group">
               <img src={photoPreviewUrl} alt="Ảnh đính kèm" className="w-full h-40 object-cover" />
               <button
                 onClick={clearPhoto}
-                className="absolute top-2.5 right-2.5 p-1.5 rounded-[0.6rem] bg-paper border border-ink text-danger hover:bg-danger hover:text-paper transition"
+                className="absolute top-2.5 right-2.5 p-1.5 rounded-[0.6rem] bg-[#181d24]/90 border border-[#293039] text-[#e16d7d] hover:bg-[#e16d7d] hover:text-[#101319] transition cursor-pointer"
               >
                 <Trash2 className="w-4 h-4" />
               </button>
@@ -347,10 +354,10 @@ export const CaptureRoute: React.FC<CaptureRouteProps> = ({ isOnline, onEntrySav
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={isSubmitting}
-              className="w-full h-24 rounded-card border border-dashed border-ink/60 hover:border-ink bg-paper-soft/50 hover:bg-paper-soft flex flex-col items-center justify-center gap-1.5 transition cursor-pointer disabled:opacity-50"
+              className="w-full h-24 rounded-card border border-dashed border-[#303842] hover:border-[#6af0b6]/50 bg-[#12161c] hover:bg-[#181d24] flex flex-col items-center justify-center gap-1.5 transition cursor-pointer disabled:opacity-50 group"
             >
-              <Camera className="w-6 h-6 text-ink-soft" />
-              <span className="text-xs text-ink-soft font-medium">Chạm để chọn hoặc chụp ảnh</span>
+              <Camera className="w-6 h-6 text-[#f3f5f4] group-hover:scale-105 transition-transform" />
+              <span className="text-xs text-[#f3f5f4] font-bold">Chạm để chọn hoặc chụp ảnh</span>
             </button>
           )}
 
@@ -365,9 +372,9 @@ export const CaptureRoute: React.FC<CaptureRouteProps> = ({ isOnline, onEntrySav
         </div>
 
         {/* STEP 3: MANUAL SAVE ENTRY BUTTON */}
-        <div className="space-y-2 pt-2 border-t border-ink/15">
-          <div className="flex items-center gap-2 label-micro text-ink normal-case mb-1">
-            <span className="w-5 h-5 rounded-full bg-positive text-paper flex items-center justify-center text-[11px] font-bold">
+        <div className="space-y-2 pt-2 border-t border-[#293039]">
+          <div className="flex items-center gap-2 text-xs font-bold text-[#f3f5f4] mb-1">
+            <span className="w-5 h-5 rounded-full bg-[#6af0b6] text-[#101319] flex items-center justify-center text-[11px] font-bold">
               3
             </span>
             Lưu Nhật Ký Ngày
@@ -377,11 +384,11 @@ export const CaptureRoute: React.FC<CaptureRouteProps> = ({ isOnline, onEntrySav
             type="button"
             onClick={handleSubmit}
             disabled={isSubmitting || (!audioBlob && !photoBlob)}
-            className="btn-primary w-full py-4 text-base active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            className="w-full py-3.5 rounded-card bg-[#6af0b6] hover:bg-[#5be0a5] text-[#101319] font-bold text-sm tracking-wide shadow-[0_0_20px_rgba(106,240,182,0.2)] active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer"
           >
             {isSubmitting ? (
               <>
-                <RefreshCw className="w-5 h-5 animate-spin" />
+                <RefreshCw className="w-5 h-5 animate-spin text-[#101319]" />
                 <span>Đang Lưu Nhật Ký...</span>
               </>
             ) : (

@@ -100,6 +100,42 @@ export async function uploadMediaToSupabase(
 }
 
 /**
+ * Queries all diary entries to find the highest job number,
+ * and increments it to generate the next unique non-repeating number (e.g., #011).
+ */
+export async function getNextJobNumber(): Promise<string> {
+  try {
+    const { data, error } = await supabase
+      .from('diary_entries')
+      .select('extracted_data');
+
+    if (error || !data) {
+      return '#001';
+    }
+
+    let maxNum = 0;
+    for (const row of data) {
+      const jn = (row as any)?.extracted_data?.job_number;
+      if (jn && typeof jn === 'string') {
+        const match = jn.match(/#?(\d+)/);
+        if (match) {
+          const num = parseInt(match[1], 10);
+          if (num > maxNum) {
+            maxNum = num;
+          }
+        }
+      }
+    }
+
+    const nextNum = maxNum + 1;
+    return `#${String(nextNum).padStart(3, '0')}`;
+  } catch (err) {
+    console.warn('Failed to calculate next job number:', err);
+    return '#001';
+  }
+}
+
+/**
  * Syncs all queued offline entries to Supabase
  */
 export async function processOfflineQueue(
@@ -127,6 +163,7 @@ export async function processOfflineQueue(
       }
 
       const { data: userData } = await supabase.auth.getUser();
+      const jobNumber = item.jobNumber || (await getNextJobNumber());
 
       const { error } = await supabase.from('diary_entries').insert({
         created_by: userData?.user?.id || null,
@@ -134,7 +171,10 @@ export async function processOfflineQueue(
         voice_url: voiceUrl,
         photo_url: photoUrl,
         status: 'draft',
-        submitted_at: new Date().toISOString()
+        submitted_at: new Date().toISOString(),
+        extracted_data: {
+          job_number: jobNumber
+        }
       });
 
       if (!error) {
@@ -153,3 +193,4 @@ export async function processOfflineQueue(
 
   return { success: successCount, failed: failedCount };
 }
+

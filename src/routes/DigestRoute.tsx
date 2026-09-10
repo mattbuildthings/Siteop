@@ -18,10 +18,11 @@ import {
   DragEndEvent
 } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
-import { DailyDigest, EntryFlag, TodoItem } from '../lib/types';
+import { DailyDigest, EntryFlag, Project, TodoItem } from '../lib/types';
 import { supabase } from '../lib/supabase';
 import { Toast } from '../components/Toast';
 import { TodoItemRow } from '../components/TodoItemRow';
+import { getAccessToken } from '../lib/session';
 
 // --- Date helpers (local calendar, matching the existing date-input convention in this file) ---
 
@@ -65,10 +66,11 @@ function sortTodoItems(items: TodoItem[]): TodoItem[] {
 }
 
 interface DigestRouteProps {
+  activeProject: Project | null;
   onRefresh: () => void;
 }
 
-export const DigestRoute: React.FC<DigestRouteProps> = ({ onRefresh }) => {
+export const DigestRoute: React.FC<DigestRouteProps> = ({ activeProject, onRefresh }) => {
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [digest, setDigest] = useState<DailyDigest | null>(null);
   const [loading, setLoading] = useState(false);
@@ -87,14 +89,21 @@ export const DigestRoute: React.FC<DigestRouteProps> = ({ onRefresh }) => {
   const dndSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   // Fetch the daily digest row for selectedDate
+  // A digest belongs to one site. daily_digests is UNIQUE(digest_date) with no
+  // project column, so per-site digests live in project_digests; the legacy
+  // all-sites table is still read when no project is selected.
   const fetchDigestForDate = async (dateStr: string) => {
     setLoading(true);
     try {
-      const { data: digestData } = await supabase
-        .from('daily_digests')
-        .select('*')
-        .eq('digest_date', dateStr)
-        .maybeSingle();
+      const query = activeProject
+        ? supabase
+            .from('project_digests')
+            .select('*')
+            .eq('project_id', activeProject.id)
+            .eq('digest_date', dateStr)
+        : supabase.from('daily_digests').select('*').eq('digest_date', dateStr);
+
+      const { data: digestData } = await query.maybeSingle();
 
       setDigest(digestData as DailyDigest | null);
     } catch (err) {
@@ -114,12 +123,25 @@ export const DigestRoute: React.FC<DigestRouteProps> = ({ onRefresh }) => {
       const startIso = `${weekStartStr}T00:00:00.000Z`;
       const endIso = `${weekEndStr}T23:59:59.999Z`;
 
-      // 1. Flagged entries for the week (flat queries, same pattern used elsewhere)
-      const { data: entriesData } = await supabase
+      // 1. Flagged entries for the week, scoped to the active site so one
+      //    crew's to-do list is not filled with another site's items.
+      let entriesQuery = supabase
         .from('diary_entries')
         .select('*')
         .gte('created_at', startIso)
         .lte('created_at', endIso);
+
+      if (activeProject) {
+        const { data: metaRows } = await supabase
+          .from('entry_meta')
+          .select('entry_id')
+          .eq('project_id', activeProject.id);
+
+        const ids = (metaRows || []).map((m: any) => m.entry_id);
+        entriesQuery = entriesQuery.in('id', ids.length > 0 ? ids : ['00000000-0000-0000-0000-000000000000']);
+      }
+
+      const { data: entriesData } = await entriesQuery;
 
       const { data: flagsData } = await supabase.from('entry_flags').select('*');
 
@@ -208,11 +230,11 @@ export const DigestRoute: React.FC<DigestRouteProps> = ({ onRefresh }) => {
 
   useEffect(() => {
     fetchDigestForDate(selectedDate);
-  }, [selectedDate]);
+  }, [selectedDate, activeProject?.id]);
 
   useEffect(() => {
     fetchAndPopulateTodos(weekStart);
-  }, [weekStart]);
+  }, [weekStart, activeProject?.id]);
 
   const changeDateByDays = (days: number) => {
     const d = new Date(selectedDate);
@@ -304,10 +326,15 @@ export const DigestRoute: React.FC<DigestRouteProps> = ({ onRefresh }) => {
     });
 
     try {
+      const accessToken = await getAccessToken();
+
       const response = await fetch(`/api/generate-digest?date=${selectedDate}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ date: selectedDate })
+        headers: {
+          'Content-Type': 'application/json',
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {})
+        },
+        body: JSON.stringify({ date: selectedDate, projectId: activeProject?.id ?? null })
       });
 
       if (!response.ok) {
@@ -350,16 +377,18 @@ export const DigestRoute: React.FC<DigestRouteProps> = ({ onRefresh }) => {
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-xl font-bold text-ink tracking-tight">Tổng Hợp Ngày</h2>
-            <p className="text-xs text-ink-soft">Báo cáo tiến độ & danh sách cần chú ý (Gemini AI)</p>
+            <p className="text-xs text-ink-soft">
+              {activeProject ? activeProject.name : 'Tất cả công trình'} · tiến độ &amp; cần chú ý
+            </p>
           </div>
 
           <button
             onClick={handleGenerateDigest}
             disabled={generating}
-            className="w-auto px-3.5 py-2 rounded-card bg-[#6af0b6] hover:bg-[#5be0a5] text-[#101319] font-bold text-xs tracking-wide shadow-[0_0_16px_rgba(106,240,182,0.2)] active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5 cursor-pointer"
+            className="w-auto px-3.5 py-2 rounded-card bg-accent hover:bg-accent-hover text-accent-ink font-bold text-xs tracking-wide active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5 cursor-pointer"
           >
             {generating ? (
-              <RefreshCw className="w-3.5 h-3.5 animate-spin text-[#101319]" />
+              <RefreshCw className="w-3.5 h-3.5 animate-spin text-accent-ink" />
             ) : (
               <Sparkles className="w-3.5 h-3.5" />
             )}
@@ -371,24 +400,24 @@ export const DigestRoute: React.FC<DigestRouteProps> = ({ onRefresh }) => {
         <div className="card p-2.5 flex items-center justify-between">
           <button
             onClick={() => changeDateByDays(-1)}
-            className="p-1.5 rounded-[0.6rem] bg-[#12161c] border border-[#293039] text-[#77818d] hover:text-[#f3f5f4] hover:bg-[#1e242d] transition cursor-pointer"
+            className="icon-btn icon-btn-sm bg-surface border border-border text-ink-soft hover:text-ink hover:bg-card-alt transition cursor-pointer"
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
 
           <div className="flex items-center gap-2">
-            <Calendar className="w-4 h-4 text-[#77818d]" />
+            <Calendar className="w-4 h-4 text-ink-soft" />
             <input
               type="date"
               value={selectedDate}
               onChange={(e) => setSelectedDate(e.target.value)}
-              className="bg-transparent text-sm font-bold text-[#f3f5f4] focus:outline-none cursor-pointer"
+              className="bg-transparent text-sm font-bold text-ink focus:outline-none cursor-pointer"
             />
           </div>
 
           <button
             onClick={() => changeDateByDays(1)}
-            className="p-1.5 rounded-[0.6rem] bg-[#12161c] border border-[#293039] text-[#77818d] hover:text-[#f3f5f4] hover:bg-[#1e242d] transition cursor-pointer"
+            className="icon-btn icon-btn-sm bg-surface border border-border text-ink-soft hover:text-ink hover:bg-card-alt transition cursor-pointer"
           >
             <ChevronRight className="w-4 h-4" />
           </button>
@@ -396,51 +425,51 @@ export const DigestRoute: React.FC<DigestRouteProps> = ({ onRefresh }) => {
       </div>
 
       {loading ? (
-        <div className="py-12 text-center text-xs text-[#77818d] space-y-2">
-          <RefreshCw className="w-6 h-6 animate-spin mx-auto text-[#6af0b6]" />
+        <div className="py-12 text-center text-xs text-ink-soft space-y-2">
+          <RefreshCw className="w-6 h-6 animate-spin mx-auto text-accent" />
           <p>Đang tải dữ liệu tổng hợp...</p>
         </div>
       ) : (
         <div className="space-y-4">
           {/* SECTION 1: "⚠️ CẦN CHÚ Ý" (Agenda Text) */}
           <div className="card-alt rounded-card p-5 space-y-3 relative overflow-hidden">
-            <div className="flex items-center justify-between border-b border-[#293039] pb-2">
-              <h3 className="text-sm font-bold text-[#f3f5f4] flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 text-[#d4bd65]" />
+            <div className="flex items-center justify-between border-b border-border pb-2">
+              <h3 className="text-sm font-bold text-ink flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-warning" />
                 Section 1: ⚠️ Cần Chú Ý (Agenda)
               </h3>
-              <span className="pill px-2.5 py-0.5 bg-[#d4bd65]/15 text-[#d4bd65] border border-[#d4bd65]/30 font-bold flex items-center gap-1">
+              <span className="pill px-2.5 py-0.5 bg-warning/15 text-warning border border-warning/30 font-bold flex items-center gap-1">
                 To-Do Ngày Mai
               </span>
             </div>
 
-            <div className="text-xs text-[#f3f5f4] leading-relaxed whitespace-pre-wrap font-sans">
+            <div className="text-xs text-ink leading-relaxed whitespace-pre-wrap font-sans">
               {digest?.agenda_text || 'Chưa có tổng hợp agenda cần chú ý. Chạm nút "Tạo Tổng Hợp" để Gemini AI phân tích.'}
             </div>
           </div>
 
           {/* SECTION 2: "📋 TÓM TẮT" (Summary Text) */}
           <div className="card p-5 space-y-3">
-            <div className="flex items-center justify-between border-b border-[#293039] pb-2">
-              <h3 className="text-sm font-bold text-[#f3f5f4] flex items-center gap-2">
-                <FileCheck2 className="w-4 h-4 text-[#8da6ff]" />
+            <div className="flex items-center justify-between border-b border-border pb-2">
+              <h3 className="text-sm font-bold text-ink flex items-center gap-2">
+                <FileCheck2 className="w-4 h-4 text-info" />
                 Section 2: 📋 Tóm Tắt (Summary)
               </h3>
-              <span className="pill px-2 py-0.5 bg-[#8da6ff]/15 text-[#8da6ff] border border-[#8da6ff]/30">
+              <span className="pill px-2 py-0.5 bg-info/15 text-info border border-info/30">
                 Tiến Độ Tổng Quan
               </span>
             </div>
 
-            <div className="text-xs text-[#f3f5f4] leading-relaxed whitespace-pre-wrap font-sans">
+            <div className="text-xs text-ink leading-relaxed whitespace-pre-wrap font-sans">
               {digest?.summary_text || 'Chưa có tóm tắt tổng quan. Chạm nút "Tạo Tổng Hợp" để Gemini AI tổng hợp tiến độ.'}
             </div>
           </div>
 
           {/* WEEKLY TO-DO LIST */}
           <div className="card p-5 space-y-3">
-            <div className="flex items-center justify-between border-b border-[#293039] pb-2">
-              <h3 className="label-micro text-[#f3f5f4] flex items-center gap-1.5">
-                <ListChecks className="w-4 h-4 text-[#6af0b6]" />
+            <div className="flex items-center justify-between border-b border-border pb-2">
+              <h3 className="label-micro text-ink flex items-center gap-1.5">
+                <ListChecks className="w-4 h-4 text-accent" />
                 To-Do Tuần Này ({todoItems.filter((t) => !t.is_done).length})
               </h3>
             </div>
@@ -449,14 +478,14 @@ export const DigestRoute: React.FC<DigestRouteProps> = ({ onRefresh }) => {
             <div className="card-alt p-2 flex items-center justify-between">
               <button
                 onClick={() => changeWeekBy(-1)}
-                className="p-1.5 rounded-[0.6rem] bg-[#12161c] border border-[#293039] text-[#77818d] hover:text-[#f3f5f4] hover:bg-[#1e242d] transition cursor-pointer"
+                className="icon-btn icon-btn-sm bg-surface border border-border text-ink-soft hover:text-ink hover:bg-card-alt transition cursor-pointer"
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
-              <span className="text-xs font-bold text-[#f3f5f4]">{formatWeekLabel(weekStart)}</span>
+              <span className="text-xs font-bold text-ink">{formatWeekLabel(weekStart)}</span>
               <button
                 onClick={() => changeWeekBy(1)}
-                className="p-1.5 rounded-[0.6rem] bg-[#12161c] border border-[#293039] text-[#77818d] hover:text-[#f3f5f4] hover:bg-[#1e242d] transition cursor-pointer"
+                className="icon-btn icon-btn-sm bg-surface border border-border text-ink-soft hover:text-ink hover:bg-card-alt transition cursor-pointer"
               >
                 <ChevronRight className="w-4 h-4" />
               </button>

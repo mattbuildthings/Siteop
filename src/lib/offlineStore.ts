@@ -1,8 +1,8 @@
-import { OfflineEntry, DiaryEntry } from './types';
+import { ExtractedData, OfflineEntry, Weather } from './types';
 import { supabase } from './supabase';
+import { getNextLogNumber } from './session';
 
 const QUEUE_STORAGE_KEY = 'siteop_offline_queue_v1';
-const DRAFT_ENTRIES_KEY = 'siteop_local_drafts_v1';
 
 export function getOfflineQueue(): OfflineEntry[] {
   try {
@@ -18,7 +18,12 @@ export function saveOfflineQueue(queue: OfflineEntry[]): void {
   try {
     localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(queue));
   } catch (err) {
+    // localStorage is ~5MB and base64 inflates blobs by a third, so a couple of
+    // photos can fill it. Surface it rather than dropping the entry silently.
     console.error('Failed to save offline queue to localStorage:', err);
+    throw new Error(
+      'Bộ nhớ offline đã đầy — vui lòng kết nối mạng để đồng bộ các nhật ký đang chờ trước khi ghi thêm.'
+    );
   }
 }
 
@@ -44,11 +49,7 @@ export function removeFromOfflineQueue(id: string): void {
 export function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onloadend = () => {
-      const result = reader.result as string;
-      // Strip data URL prefix to get raw base64 or keep string
-      resolve(result);
-    };
+    reader.onloadend = () => resolve(reader.result as string);
     reader.onerror = reject;
     reader.readAsDataURL(blob);
   });
@@ -69,7 +70,8 @@ export function base64ToBlob(base64Data: string, fallbackMime: string = 'applica
 }
 
 /**
- * Uploads a blob to Supabase Storage (or returns inline Data URL if storage bucket fails)
+ * Uploads a blob to Supabase Storage (or returns an inline Data URL if the
+ * bucket write fails, so a photo is never lost to a storage misconfiguration).
  */
 export async function uploadMediaToSupabase(
   blob: Blob,
@@ -77,14 +79,12 @@ export async function uploadMediaToSupabase(
   filename: string
 ): Promise<string> {
   try {
-    const filePath = `${folder}/${Date.now()}_${filename}`;
-    const { data, error } = await supabase.storage
-      .from('diary-assets')
-      .upload(filePath, blob, {
-        cacheControl: '3600',
-        upsert: true,
-        contentType: blob.type
-      });
+    const filePath = `${folder}/${Date.now()}_${Math.random().toString(36).substring(2, 8)}_${filename}`;
+    const { data, error } = await supabase.storage.from('diary-assets').upload(filePath, blob, {
+      cacheControl: '3600',
+      upsert: true,
+      contentType: blob.type
+    });
 
     if (error) {
       console.warn(`Supabase Storage upload to 'diary-assets' warning (${error.message}). Using data URL fallback.`);
@@ -99,44 +99,115 @@ export async function uploadMediaToSupabase(
   }
 }
 
-/**
- * Queries all diary entries to find the highest job number,
- * and increments it to generate the next unique non-repeating number (e.g., #011).
- */
-export async function getNextJobNumber(): Promise<string> {
-  try {
-    const { data, error } = await supabase
-      .from('diary_entries')
-      .select('extracted_data');
-
-    if (error || !data) {
-      return '#001';
-    }
-
-    let maxNum = 0;
-    for (const row of data) {
-      const jn = (row as any)?.extracted_data?.job_number;
-      if (jn && typeof jn === 'string') {
-        const match = jn.match(/#?(\d+)/);
-        if (match) {
-          const num = parseInt(match[1], 10);
-          if (num > maxNum) {
-            maxNum = num;
-          }
-        }
-      }
-    }
-
-    const nextNum = maxNum + 1;
-    return `#${String(nextNum).padStart(3, '0')}`;
-  } catch (err) {
-    console.warn('Failed to calculate next job number:', err);
-    return '#001';
-  }
+export interface CreateEntryInput {
+  voiceUrl?: string | null;
+  photoUrls?: string[];
+  transcription?: string | null;
+  extractedData?: ExtractedData | null;
+  projectId?: string | null;
+  logNumber?: string | null;
+  workDate?: string | null;
+  weather?: Weather | null;
+  createdAt?: string;
+  /** true => file and lock immediately; false => keep as an editable draft. */
+  fileAndLock?: boolean;
+  /** A human read the AI extraction before this was saved. */
+  reviewed?: boolean;
 }
 
 /**
- * Syncs all queued offline entries to Supabase
+ * Single place an entry is created, shared by the capture flow and the offline
+ * queue flush. Writes diary_entries, then the entry_meta side table (project,
+ * weather, work date, lock state), the photo gallery, and the flag row.
+ *
+ * diary_entries keeps its original column shape -- everything new lives in
+ * entry_meta. See the header of the 20260909 migration for why.
+ */
+export async function createEntry(input: CreateEntryInput): Promise<{ id: string } | { error: string }> {
+  const { data: userData } = await supabase.auth.getUser();
+  const userId = userData?.user?.id || null;
+  const photoUrls = input.photoUrls || [];
+  const now = new Date().toISOString();
+
+  const extracted: Record<string, unknown> = {
+    ...(input.extractedData || {}),
+    ...(input.logNumber ? { job_number: input.logNumber } : {})
+  };
+
+  const { data: newEntry, error } = await supabase
+    .from('diary_entries')
+    .insert({
+      created_by: userId,
+      ...(input.createdAt ? { created_at: input.createdAt } : {}),
+      voice_url: input.voiceUrl ?? null,
+      photo_url: photoUrls[0] ?? null, // cover photo, kept for existing readers
+      transcription: input.transcription ?? null,
+      extracted_data: Object.keys(extracted).length > 0 ? extracted : null,
+      status: input.fileAndLock ? 'filed' : 'draft',
+      submitted_at: now
+    })
+    .select()
+    .single();
+
+  if (error || !newEntry) {
+    return { error: error?.message || 'Không tạo được nhật ký' };
+  }
+
+  const entryId = (newEntry as { id: string }).id;
+
+  // entry_meta is inserted already locked when filing, so the lock lands in the
+  // same write rather than leaving a window where the record is mutable.
+  const { error: metaErr } = await supabase.from('entry_meta').insert({
+    entry_id: entryId,
+    project_id: input.projectId ?? null,
+    log_number: input.logNumber ?? null,
+    work_date: input.workDate ?? now.split('T')[0],
+    weather: input.weather ?? null,
+    locked_at: input.fileAndLock ? now : null,
+    locked_by: input.fileAndLock ? userId : null,
+    reviewed_at: input.reviewed ? now : null,
+    reviewed_by: input.reviewed ? userId : null
+  });
+
+  if (metaErr) {
+    console.warn('Entry saved but its meta row failed:', metaErr);
+  }
+
+  if (photoUrls.length > 0) {
+    const { error: photoErr } = await supabase.from('entry_photos').insert(
+      photoUrls.map((url, idx) => ({
+        entry_id: entryId,
+        photo_url: url,
+        sort_order: idx,
+        taken_at: now
+      }))
+    );
+    if (photoErr) console.warn('Entry saved but its photo rows failed:', photoErr);
+  }
+
+  // Flag row drives the digest agenda and the weekly to-do list.
+  if (input.extractedData) {
+    const summary =
+      input.extractedData.summary_bullet ||
+      input.extractedData.summary_vi ||
+      (input.transcription || '').substring(0, 100);
+
+    const { error: flagErr } = await supabase.from('entry_flags').insert({
+      entry_id: entryId,
+      summary_bullet: summary,
+      is_flagged: Boolean(input.extractedData.is_flagged),
+      flag_reason: input.extractedData.is_flagged ? summary : null
+    });
+    if (flagErr) console.warn('Entry saved but its flag row failed:', flagErr);
+  }
+
+  return { id: entryId };
+}
+
+/**
+ * Syncs queued offline entries to Supabase. Offline entries are always created
+ * as drafts: nothing captured without a signal gets filed and locked until
+ * somebody has looked at it online.
  */
 export async function processOfflineQueue(
   onEntryProcessed?: (syncedCount: number) => void
@@ -150,39 +221,38 @@ export async function processOfflineQueue(
   for (const item of [...queue]) {
     try {
       let voiceUrl: string | null = null;
-      let photoUrl: string | null = null;
+      const photoUrls: string[] = [];
 
       if (item.voiceBlobBase64) {
         const audioBlob = base64ToBlob(item.voiceBlobBase64, item.audioMimeType || 'audio/mp4');
         voiceUrl = await uploadMediaToSupabase(audioBlob, 'voice-memos', 'voice.mp4');
       }
 
-      if (item.photoBlobBase64) {
-        const photoBlob = base64ToBlob(item.photoBlobBase64, item.photoMimeType || 'image/jpeg');
-        photoUrl = await uploadMediaToSupabase(photoBlob, 'photos', 'photo.jpg');
+      for (const photoBase64 of item.photoBlobsBase64 || []) {
+        const photoBlob = base64ToBlob(photoBase64, item.photoMimeType || 'image/jpeg');
+        photoUrls.push(await uploadMediaToSupabase(photoBlob, 'photos', 'photo.jpg'));
       }
 
-      const { data: userData } = await supabase.auth.getUser();
-      const jobNumber = item.jobNumber || (await getNextJobNumber());
-
-      const { error } = await supabase.from('diary_entries').insert({
-        created_by: userData?.user?.id || null,
-        created_at: item.createdAt,
-        voice_url: voiceUrl,
-        photo_url: photoUrl,
-        status: 'draft',
-        submitted_at: new Date().toISOString(),
-        extracted_data: {
-          job_number: jobNumber
-        }
+      const result = await createEntry({
+        voiceUrl,
+        photoUrls,
+        transcription: item.transcription ?? null,
+        extractedData: item.extractedData ?? null,
+        projectId: item.projectId ?? null,
+        logNumber: item.jobNumber ?? null,
+        workDate: item.workDate ?? item.createdAt.split('T')[0],
+        weather: item.weather ?? null,
+        createdAt: item.createdAt,
+        fileAndLock: false,
+        reviewed: false
       });
 
-      if (!error) {
+      if ('id' in result) {
         removeFromOfflineQueue(item.id);
         successCount++;
         if (onEntryProcessed) onEntryProcessed(successCount);
       } else {
-        console.error('Failed to insert queued entry into Supabase:', error);
+        console.error('Failed to insert queued entry into Supabase:', result.error);
         failedCount++;
       }
     } catch (err) {
@@ -193,4 +263,3 @@ export async function processOfflineQueue(
 
   return { success: successCount, failed: failedCount };
 }
-

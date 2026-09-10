@@ -1,57 +1,131 @@
 @import "tailwindcss";
 
 /* ------------------------------------------------------------------
-   Design tokens — Halid · Treasury visual direction.
-   Financial Apps / Work & Wealth precision dark palette:
-   - Deep obsidian canvas (#101319)
-   - Slate container cards (#181d24) with 1px border (#293039, radius 17px)
-   - Crisp white-smoke typography (#f3f5f4) + muted steel (#77818d)
-   - Vibrant mint (#6af0b6), honey gold (#d4bd65), coral rose (#e16d7d)
+   Siteop design tokens.
+
+   DEFAULT IS LIGHT. This is a jobsite app: the phone is held at arm's
+   length in direct sun, often behind a scratched screen protector, by
+   someone wearing gloves. The dark "treasury" palette this app shipped
+   with looked good on a desk and was unreadable outdoors -- muted steel
+   #77818d on #181d24 measures about 3.6:1, well under the 4.5:1 WCAG AA
+   floor for small text, and it was being used at 10-11px.
+
+   Both themes below hold >= 4.5:1 for body text and >= 3:1 for borders
+   and icons. Dark is kept for the site trailer / evening use and is
+   selected with data-theme="dark" on <html> (see src/App.tsx).
+
+   Every colour is defined here once. Components use semantic utility
+   classes (bg-card, text-ink-soft, border-border) -- never raw hex, or
+   they would only be correct in one of the two themes.
 ------------------------------------------------------------------- */
 @theme {
   --font-sans: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 
-  /* Canvas / Background */
-  --color-paper: #101319;
-  --color-paper-soft: #141820;
+  /* --- Type scale ---------------------------------------------------
+     Shifted up roughly one step from the Tailwind default. The smallest
+     type in the app is now 13px rather than 10px; body copy is 15-17px. */
+  --text-xs: 0.8125rem;      /* 13px */
+  --text-xs--line-height: 1.15rem;
+  --text-sm: 0.9375rem;      /* 15px */
+  --text-sm--line-height: 1.35rem;
+  --text-base: 1.0625rem;    /* 17px */
+  --text-base--line-height: 1.55rem;
+  --text-lg: 1.1875rem;      /* 19px */
+  --text-lg--line-height: 1.65rem;
+  --text-xl: 1.375rem;       /* 22px */
+  --text-xl--line-height: 1.85rem;
+  --text-2xl: 1.625rem;      /* 26px */
+  --text-2xl--line-height: 2.1rem;
 
-  /* Ink (text & borders) */
-  --color-ink: #f3f5f4;
-  --color-ink-soft: #77818d;
-  --color-ink-faint: #48525e;
+  /* --- Light (default) ---------------------------------------------- */
+  /* Canvas */
+  --color-paper: #eef1f4;
+  --color-paper-soft: #e4e8ec;
+
+  /* Ink */
+  --color-ink: #0d1218;        /* 17.6:1 on card */
+  --color-ink-soft: #48535f;   /*  7.7:1 on card */
+  --color-ink-faint: #66717c;  /*  5.1:1 on card */
 
   /* Surfaces */
-  --color-card: #181d24;
-  --color-card-alt: #1e242d;
-  --color-card-dark: #0b0d12;
+  --color-card: #ffffff;
+  --color-card-alt: #f4f6f8;
+  --color-surface: #f8fafb;
+  --color-card-dark: #ffffff;
 
   /* Borders */
-  --color-border: #293039;
-  --color-border-subtle: #303842;
+  --color-border: #ccd4da;
+  --color-border-subtle: #b4bec6;
+  --color-border-strong: #8e99a3;
 
-  /* Brand accent — Halid Vibrant Mint */
-  --color-accent: #6af0b6;
-  --color-accent-soft: rgba(106, 240, 182, 0.12);
-  --color-accent-ink: #101319;
+  /* Accent */
+  --color-accent: #0b6b45;     /* 6.4:1 on card */
+  --color-accent-hover: #095537;
+  --color-accent-ink: #ffffff;
+  --color-accent-soft: rgba(11, 107, 69, 0.12);
 
   /* Semantic */
-  --color-positive: #6af0b6;
-  --color-positive-soft: rgba(106, 240, 182, 0.12);
-  --color-warning: #d4bd65;
-  --color-warning-soft: rgba(212, 189, 101, 0.12);
-  --color-danger: #e16d7d;
-  --color-danger-soft: rgba(225, 109, 125, 0.12);
-  --color-info: #8da6ff;
-  --color-info-soft: rgba(141, 166, 255, 0.12);
+  --color-positive: #0b6b45;
+  --color-warning: #8a5a00;    /* 5.8:1 on card */
+  --color-warning-soft: rgba(138, 90, 0, 0.12);
+  --color-danger: #b02230;     /* 6.6:1 on card */
+  --color-danger-hover: #8f1a26;
+  --color-danger-soft: rgba(176, 34, 48, 0.12);
+  --color-info: #1a4fc4;       /* 7.0:1 on card */
+  --color-info-soft: rgba(26, 79, 196, 0.12);
+
+  --color-scrim: rgba(13, 18, 24, 0.55);
 
   --radius-card: 17px;
   --radius-pill: 999px;
 }
 
+/* --- Dark (site trailer / evening) ----------------------------------
+   The original Halid palette, with the two muted greys lifted so small
+   text clears AA: ink-soft #9aa5b1 on card #181d24 is ~6.5:1. */
+:root[data-theme='dark'] {
+  --color-paper: #101319;
+  --color-paper-soft: #141820;
+
+  --color-ink: #f3f5f4;
+  --color-ink-soft: #9aa5b1;
+  --color-ink-faint: #7b8794;
+
+  --color-card: #181d24;
+  --color-card-alt: #1e242d;
+  --color-surface: #12161c;
+  --color-card-dark: #0b0d12;
+
+  --color-border: #293039;
+  --color-border-subtle: #3a4452;
+  --color-border-strong: #4a5666;
+
+  --color-accent: #6af0b6;
+  --color-accent-hover: #5be0a5;
+  --color-accent-ink: #101319;
+  --color-accent-soft: rgba(106, 240, 182, 0.12);
+
+  --color-positive: #6af0b6;
+  --color-warning: #e2ce7d;
+  --color-warning-soft: rgba(226, 206, 125, 0.12);
+  --color-danger: #f08a99;
+  --color-danger-hover: #e16d7d;
+  --color-danger-soft: rgba(240, 138, 153, 0.12);
+  --color-info: #a8bcff;
+  --color-info-soft: rgba(168, 188, 255, 0.12);
+
+  --color-scrim: rgba(4, 6, 9, 0.75);
+
+  color-scheme: dark;
+}
+
+:root {
+  color-scheme: light;
+}
+
 @layer base {
   html {
     -webkit-text-size-adjust: 100%;
-    color-scheme: dark;
   }
 
   body {
@@ -73,10 +147,28 @@
     background-color: var(--color-accent);
     color: var(--color-accent-ink);
   }
+
+  /* Form controls inherit the theme rather than the UA default. */
+  input,
+  textarea,
+  select {
+    color: var(--color-ink);
+  }
+
+  input[type='date'] {
+    /* Keeps the native calendar glyph legible in both themes. */
+    color-scheme: inherit;
+  }
+
+  /* A visible focus ring matters more here than usual: gloved taps miss,
+     and people fall back to keyboard on the site office laptop. */
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
 }
 
 @layer components {
-  /* Precision slate card */
   .card {
     background-color: var(--color-card);
     border: 1px solid var(--color-border);
@@ -90,7 +182,7 @@
   }
 
   .card-ink {
-    background-color: #0b0d12;
+    background-color: var(--color-card-dark);
     color: var(--color-ink);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-card);
@@ -98,9 +190,9 @@
 
   /* Micro uppercase eyebrow label */
   .label-micro {
-    font-size: 0.6875rem;
+    font-size: 0.8125rem;
     font-weight: 700;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.06em;
     text-transform: uppercase;
     color: var(--color-ink-soft);
   }
@@ -109,12 +201,40 @@
   .pill {
     display: inline-flex;
     align-items: center;
-    gap: 0.25rem;
+    gap: 0.3rem;
     border-radius: var(--radius-pill);
     font-weight: 700;
-    font-size: 0.6875rem;
-    letter-spacing: 0.02em;
+    font-size: 0.8125rem;
+    letter-spacing: 0.01em;
     white-space: nowrap;
+  }
+
+  /* Any pill that is actually a button still has to be tappable. */
+  button.pill {
+    min-height: 34px;
+  }
+
+  /* Icon-only buttons. 44px is the floor for a gloved thumb. */
+  .icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+    border-radius: 12px;
+    color: var(--color-ink-soft);
+    transition: background-color 0.15s ease, color 0.15s ease;
+    cursor: pointer;
+  }
+
+  .icon-btn:hover {
+    background-color: var(--color-card-alt);
+    color: var(--color-ink);
+  }
+
+  .icon-btn-sm {
+    min-width: 38px;
+    min-height: 38px;
   }
 
   /* Big tabular hero numeral */
@@ -135,12 +255,49 @@
     transition: all 0.15s ease;
   }
 
+  .btn-primary:hover {
+    background-color: var(--color-accent-hover);
+    border-color: var(--color-accent-hover);
+  }
+
   .btn-primary:active {
     transform: scale(0.98);
   }
 
+  /* The primary full-width commit action on a screen (record, file, save). */
+  .btn-block {
+    width: 100%;
+    min-height: 52px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.9rem 1rem;
+    border-radius: var(--radius-card);
+    background-color: var(--color-accent);
+    color: var(--color-accent-ink);
+    font-weight: 700;
+    font-size: var(--text-sm);
+    letter-spacing: 0.01em;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .btn-block:hover:not(:disabled) {
+    background-color: var(--color-accent-hover);
+  }
+
+  .btn-block:active:not(:disabled) {
+    transform: scale(0.985);
+  }
+
+  .btn-block:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
   .btn-ink {
-    background-color: #242b35;
+    background-color: var(--color-card-alt);
     color: var(--color-ink);
     border: 1px solid var(--color-border-subtle);
     border-radius: var(--radius-pill);
@@ -159,19 +316,31 @@
   }
 
   .btn-outline:hover {
-    border-color: var(--color-border);
-    background-color: rgba(255, 255, 255, 0.04);
+    border-color: var(--color-border-strong);
+    background-color: var(--color-card-alt);
   }
 
   .field {
     background-color: var(--color-card);
-    border: 1px solid var(--color-border);
+    border: 1px solid var(--color-border-subtle);
     border-radius: var(--radius-card);
     color: var(--color-ink);
+    min-height: 44px;
   }
 
   .field::placeholder {
     color: var(--color-ink-faint);
+  }
+
+  .field:focus {
+    border-color: var(--color-accent);
+    outline: none;
+  }
+
+  /* Modal / drawer backdrop */
+  .scrim {
+    background-color: var(--color-scrim);
+    backdrop-filter: blur(4px);
   }
 }
 
@@ -182,10 +351,10 @@
 @keyframes pulse-ring {
   0%,
   100% {
-    box-shadow: 0 0 0 0 rgba(168, 50, 50, 0.35);
+    box-shadow: 0 0 0 0 rgba(176, 34, 48, 0.35);
   }
   50% {
-    box-shadow: 0 0 0 14px rgba(168, 50, 50, 0);
+    box-shadow: 0 0 0 14px rgba(176, 34, 48, 0);
   }
 }
 
@@ -227,4 +396,11 @@
 .no-scrollbar {
   -ms-overflow-style: none;
   scrollbar-width: none;
+}
+
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }

@@ -26,18 +26,18 @@ export const Toast: React.FC<ToastProps> = ({
 
   const styles =
     type === 'success'
-      ? { bg: 'bg-[#6af0b6]/15 border-[#6af0b6]/30', text: 'text-[#6af0b6]', Icon: CheckCircle2 }
+      ? { bg: 'bg-accent/15 border-accent/30', text: 'text-accent', Icon: CheckCircle2 }
       : type === 'error'
-      ? { bg: 'bg-[#e16d7d]/15 border-[#e16d7d]/30', text: 'text-[#e16d7d]', Icon: AlertCircle }
-      : { bg: 'bg-[#8da6ff]/15 border-[#8da6ff]/30', text: 'text-[#8da6ff]', Icon: Info };
+      ? { bg: 'bg-danger/15 border-danger/30', text: 'text-danger', Icon: AlertCircle }
+      : { bg: 'bg-info/15 border-info/30', text: 'text-info', Icon: Info };
 
   const { bg, text, Icon } = styles;
 
   return (
     <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 animate-bounce-in w-[90%] max-w-sm" role="status">
-      <div className={`flex items-center gap-3 px-4 py-3 rounded-card border bg-[#181d24] ${bg}`}>
+      <div className={`flex items-center gap-3 px-4 py-3 rounded-card border bg-card ${bg}`}>
         <Icon className={`w-5 h-5 shrink-0 ${text}`} />
-        <span className="text-xs font-semibold text-[#f3f5f4]">{message}</span>
+        <span className="text-xs font-semibold text-ink">{message}</span>
       </div>
     </div>
   );

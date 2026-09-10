@@ -1,10 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { createClient } from '@supabase/supabase-js';
 import { GEMINI_MODEL } from '../src/lib/geminiConfig.js';
-
-const supabaseUrl = process.env.VITE_SUPABASE_URL || 'https://sdfdnxgxbxxbyofmeyzo.supabase.co';
-const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
+import { createUserClient, readAccessToken } from '../src/lib/serverSupabase.js';
 
 // Deterministic trigger word check helper
 function removeVietnameseDiacritics(str: string): string {
@@ -77,7 +74,6 @@ YÊU CẦU TRẢ VỀ JSON THUẦN TÚY (không kèm markdown):
   "labor": [
     { "role": "Vị trí thợ", "count": 1, "hours": "Thời gian", "note": "Ghi chú" }
   ],
-  "confidence_score": 0.95,
   "summary_bullet": "Tóm tắt 1 câu ngắn gọn về nhật ký",
   "is_flagged": false
 }`;
@@ -88,7 +84,6 @@ YÊU CẦU TRẢ VỀ JSON THUẦN TÚY (không kèm markdown):
       category: 'Khác',
       materials: [],
       labor: [],
-      confidence_score: 0.85,
       summary_bullet: transcription.substring(0, 80),
       is_flagged: false
     };
@@ -117,9 +112,9 @@ YÊU CẦU TRẢ VỀ JSON THUẦN TÚY (không kèm markdown):
 
     let existingJobNumber: string | undefined;
 
-    if (entryId && supabaseUrl && supabaseAnonKey) {
-      const supabase = createClient(supabaseUrl, supabaseAnonKey);
+    const supabase = createUserClient(readAccessToken(req));
 
+    if (entryId && supabase) {
       // Fetch existing entry to preserve job_number
       const { data: existingEntry } = await supabase
         .from('diary_entries')

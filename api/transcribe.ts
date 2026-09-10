@@ -1,10 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { createClient } from '@supabase/supabase-js';
 import { GEMINI_MODEL } from '../src/lib/geminiConfig.js';
-
-const supabaseUrl = process.env.VITE_SUPABASE_URL || 'https://sdfdnxgxbxxbyofmeyzo.supabase.co';
-const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
+import { createUserClient, readAccessToken } from '../src/lib/serverSupabase.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
@@ -50,9 +47,12 @@ Không thêm nhận xét, chỉ trả về đúng văn bản ghi âm tiếng Vi�
     // Clean up code blocks if present
     transcriptionText = transcriptionText.replace(/^```[a-z]*\n?/i, '').replace(/\n?```$/i, '').trim();
 
-    // Update entry directly in Supabase if entryId provided
-    if (entryId && supabaseUrl && supabaseAnonKey) {
-      const supabase = createClient(supabaseUrl, supabaseAnonKey);
+    // Update the entry directly if entryId was provided. This runs AS the
+    // signed-in user: RLS is no longer USING(true), so an anonymous
+    // server-side write to diary_entries is rejected outright.
+    const supabase = createUserClient(readAccessToken(req));
+
+    if (entryId && supabase) {
       const { error: updateErr } = await supabase
         .from('diary_entries')
         .update({

@@ -1,10 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { createClient } from '@supabase/supabase-js';
 import { GEMINI_MODEL } from '../src/lib/geminiConfig.js';
-
-const supabaseUrl = process.env.VITE_SUPABASE_URL || 'https://sdfdnxgxbxxbyofmeyzo.supabase.co';
-const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
+import { createUserClient, readAccessToken } from '../src/lib/serverSupabase.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -12,7 +9,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(500).json({ error: 'GEMINI_API_KEY server environment variable not configured' });
   }
 
-  const supabase = createClient(supabaseUrl, supabaseAnonKey);
+  const supabase = createUserClient(readAccessToken(req));
+  if (!supabase) {
+    return res.status(500).json({ error: 'Supabase is not configured on the server' });
+  }
 
   try {
     let targetDate = (req.query.date as string) || (req.body && req.body.date);
@@ -21,16 +21,43 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       targetDate = now.toISOString().split('T')[0];
     }
 
+    // A digest belongs to one site. Without this, two sites logging on the same
+    // day were merged into a single narrative and upserted over each other,
+    // because daily_digests is UNIQUE(digest_date).
+    const projectId: string | null =
+      (req.query.projectId as string) || (req.body && req.body.projectId) || null;
+
+    // Entry ids on this project, via the entry_meta side table.
+    let projectEntryIds: string[] | null = null;
+    if (projectId) {
+      const { data: metaRows, error: metaErr } = await supabase
+        .from('entry_meta')
+        .select('entry_id')
+        .eq('project_id', projectId);
+
+      if (metaErr) {
+        throw new Error(`Failed fetching project entries: ${metaErr.message}`);
+      }
+      projectEntryIds = (metaRows || []).map((m: any) => m.entry_id);
+    }
+
     const startIso = `${targetDate}T00:00:00.000Z`;
     const endIso = `${targetDate}T23:59:59.999Z`;
 
     // 1. Fetch diary entries for targetDate (flat select to avoid schema cache join issues)
-    const { data: entries, error: fetchErr } = await supabase
+    let entriesQuery = supabase
       .from('diary_entries')
       .select('*')
       .gte('created_at', startIso)
       .lte('created_at', endIso)
       .order('created_at', { ascending: true });
+
+    if (projectEntryIds !== null) {
+      // No entries on this project at all -> short-circuit to the empty digest.
+      entriesQuery = entriesQuery.in('id', projectEntryIds.length > 0 ? projectEntryIds : ['00000000-0000-0000-0000-000000000000']);
+    }
+
+    const { data: entries, error: fetchErr } = await entriesQuery;
 
     if (fetchErr) {
       throw new Error(`Failed fetching date entries: ${fetchErr.message}`);
@@ -45,6 +72,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         summary_text: 'Không có ghi nhận nhật ký công trình nào trong ngày.',
         entries_count: 0
       };
+
+      if (projectId) {
+        await supabase
+          .from('project_digests')
+          .upsert({ ...emptyDigest, project_id: projectId }, { onConflict: 'project_id,digest_date' });
+        return res.status(200).json({ ...emptyDigest, project_id: projectId });
+      }
 
       await supabase.from('daily_digests').upsert(emptyDigest, { onConflict: 'digest_date' });
       return res.status(200).json(emptyDigest);
@@ -120,11 +154,17 @@ YÊU CẦU TRẢ VỀ JSON THUẦN TÚY (không kèm markdown):
       generated_at: new Date().toISOString()
     };
 
-    const { data: upsertedData, error: upsertErr } = await supabase
-      .from('daily_digests')
-      .upsert(digestPayload, { onConflict: 'digest_date' })
-      .select()
-      .single();
+    const { data: upsertedData, error: upsertErr } = projectId
+      ? await supabase
+          .from('project_digests')
+          .upsert({ ...digestPayload, project_id: projectId }, { onConflict: 'project_id,digest_date' })
+          .select()
+          .single()
+      : await supabase
+          .from('daily_digests')
+          .upsert(digestPayload, { onConflict: 'digest_date' })
+          .select()
+          .single();
 
     if (upsertErr) {
       throw new Error(`Failed saving daily digest: ${upsertErr.message}`);

@@ -1,10 +1,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { google } from 'googleapis';
-import { createClient } from '@supabase/supabase-js';
 import { Readable } from 'stream';
+import { createUserClient, readAccessToken } from '../src/lib/serverSupabase.js';
 
-const supabaseUrl = process.env.VITE_SUPABASE_URL || 'https://sdfdnxgxbxxbyofmeyzo.supabase.co';
-const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
 const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID || '1Bp_KmKCXxZblDCFXtuYVSeLziLVITLz0';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -12,7 +10,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const supabase = createClient(supabaseUrl, supabaseAnonKey);
+  // Runs as the caller. sync_logs is manager-only under the new RLS policies,
+  // so a non-manager's export now fails loudly instead of silently writing.
+  const supabase = createUserClient(readAccessToken(req));
+  if (!supabase) {
+    return res.status(500).json({ error: 'Supabase is not configured on the server' });
+  }
 
   try {
     // 1. Fetch entries from Supabase (filed or draft)

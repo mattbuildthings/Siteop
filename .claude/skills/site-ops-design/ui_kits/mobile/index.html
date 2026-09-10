@@ -1,0 +1,78 @@
+<!-- @dsCard group="Mobile" viewport="390x720" name="Site Ops — Mobile" subtitle="Field capture: note feed, capture, note detail" -->
+<!DOCTYPE html><html><head><meta charset="utf-8">
+<link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+<script src="../../_ds_bundle.js"></script>
+<style>body{margin:0;background:var(--color-bg);font-family:var(--font-body);display:flex;justify-content:center}*{box-sizing:border-box}#root{width:390px;min-height:720px;background:var(--color-bg);position:relative;overflow:hidden}</style>
+</head><body>
+<div id="root"></div>
+<script type="text/babel">
+const {Button,Badge,NoteCard}=window.SiteOpsDesignSystem_019e16;
+const I=({name,size=18,color})=><i data-lucide={name} style={{width:size,height:size,color}}></i>;
+const NOTES=[
+{id:1,type:'photo',title:'Foundation crack — east wall',timestamp:'08:42 AM',author:'J. Alvarez',synced:false},
+{id:2,type:'audio',title:'Walkthrough — 2nd floor framing',timestamp:'09:15 AM',author:'M. Chen',synced:true},
+{id:3,type:'photo',title:'Rebar spacing — column C4',timestamp:'10:02 AM',author:'J. Alvarez',synced:true},
+];
+
+function TopBar({title}){
+return <div style={{height:56,display:'flex',alignItems:'center',padding:'0 16px',background:'var(--teal-800)',color:'#fff'}}>
+<div style={{fontFamily:'var(--font-display)',fontWeight:700,fontSize:20,textTransform:'uppercase'}}>{title}</div>
+</div>;
+}
+
+function Feed({onCapture,onOpenNote}){
+return <div style={{display:'flex',flexDirection:'column',height:720}}>
+<TopBar title="East Wing — Foundation"/>
+<div style={{flex:1,overflowY:'auto',padding:12,display:'flex',flexDirection:'column',gap:8}}>
+<div style={{fontFamily:'var(--font-mono)',fontSize:11,color:'var(--color-text-tertiary)',padding:'4px 4px 0'}}>34.0522° N, 118.2437° W</div>
+{NOTES.map(n=><div key={n.id} onClick={()=>onOpenNote(n)}><NoteCard {...n}/></div>)}
+</div>
+<div style={{padding:16,borderTop:'1px solid var(--color-border)',background:'var(--color-surface)',display:'flex',gap:10}}>
+<Button variant="secondary" size="lg" icon={<I name="mic" size={18}/>} onClick={()=>onCapture('audio')} style={{flex:1}}>Audio</Button>
+<Button variant="accent" size="lg" icon={<I name="camera" size={18} color="#fff"/>} onClick={()=>onCapture('photo')} style={{flex:1}}>Photo</Button>
+</div>
+</div>;
+}
+
+function Capture({mode,onClose}){
+return <div style={{display:'flex',flexDirection:'column',height:720,background:'var(--gray-900)',color:'#fff'}}>
+<div style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',gap:16}}>
+<I name={mode==='audio'?'mic':'camera'} size={64} color="var(--orange-500)"/>
+<div style={{fontFamily:'var(--font-mono)',fontSize:14}}>{mode==='audio'?'Recording…  00:08':'Framing shot'}</div>
+</div>
+<div style={{padding:24,display:'flex',justifyContent:'center',gap:24}}>
+<button onClick={onClose} style={{width:56,height:56,borderRadius:'50%',border:'2px solid #fff',background:'transparent',color:'#fff'}}>✕</button>
+<button onClick={onClose} style={{width:72,height:72,borderRadius:'50%',border:'4px solid #fff',background:'var(--orange-600)'}}></button>
+</div>
+</div>;
+}
+
+function NoteDetail({note,onClose}){
+return <div style={{display:'flex',flexDirection:'column',height:720}}>
+<TopBar title="Note"/>
+<div style={{padding:16,flex:1}}>
+<div style={{width:'100%',height:220,background:'var(--gray-200)',borderRadius:'var(--radius-md)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:40,color:'var(--color-text-tertiary)',marginBottom:16}}>{note.type==='audio'?'🎤':'📷'}</div>
+<div style={{fontSize:18,fontWeight:700,color:'var(--color-text-primary)',marginBottom:6}}>{note.title}</div>
+<div style={{fontFamily:'var(--font-mono)',fontSize:12,color:'var(--color-text-secondary)',marginBottom:12}}>{note.timestamp} · {note.author}</div>
+<Badge tone={note.synced?'success':'warning'}>{note.synced?'Synced':'Pending sync'}</Badge>
+</div>
+<div style={{padding:16,borderTop:'1px solid var(--color-border)'}}><Button variant="secondary" size="lg" onClick={onClose} style={{width:'100%'}}>Back to feed</Button></div>
+</div>;
+}
+
+function App(){
+const[view,setView]=React.useState('feed');
+const[mode,setMode]=React.useState('photo');
+const[note,setNote]=React.useState(null);
+React.useEffect(()=>{lucide.createIcons()},[view]);
+if(view==='capture')return <Capture mode={mode} onClose={()=>setView('feed')}/>;
+if(view==='note')return <NoteDetail note={note} onClose={()=>setView('feed')}/>;
+return <Feed onCapture={m=>{setMode(m);setView('capture')}} onOpenNote={n=>{setNote(n);setView('note')}}/>;
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body></html>

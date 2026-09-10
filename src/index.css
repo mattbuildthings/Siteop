@@ -3,27 +3,37 @@
 /* ------------------------------------------------------------------
    Siteop design tokens.
 
-   DEFAULT IS LIGHT. This is a jobsite app: the phone is held at arm's
-   length in direct sun, often behind a scratched screen protector, by
-   someone wearing gloves. The dark "treasury" palette this app shipped
-   with looked good on a desk and was unreadable outdoors -- muted steel
-   #77818d on #181d24 measures about 3.6:1, well under the 4.5:1 WCAG AA
-   floor for small text, and it was being used at 10-11px.
+   Repainted to the Site Ops Design System (imported from Claude Design,
+   see .claude/skills/site-ops-design/). Deep Teal as the dominant
+   surface/action color, Signal Orange held back for a single accent
+   role per theme, warm gray neutrals (not cool/blue-gray), Big
+   Shoulders for condensed uppercase headers/labels, Public Sans for
+   body, Space Mono for timestamps/IDs/coordinates.
 
-   Both themes below hold >= 4.5:1 for body text and >= 3:1 for borders
-   and icons. Dark is kept for the site trailer / evening use and is
-   selected with data-theme="dark" on <html> (see src/App.tsx).
+   DEFAULT IS STILL LIGHT. This is a jobsite app: the phone is held at
+   arm's length in direct sun, often behind a scratched screen
+   protector, by someone wearing gloves. The imported design system
+   ships light-only -- dark below is a derived extension of its own
+   teal/orange ramp, re-checked against WCAG AA rather than carried
+   over by eye. Both themes hold >= 4.5:1 for body text; semantic
+   colors (success/danger) are swapped for lighter tints in dark mode
+   because the source system's own success/danger hexes measure under
+   3:1 against the teal-800/900 surfaces (checked, not assumed). Dark
+   is kept for the site trailer / evening use and is selected with
+   data-theme="dark" on <html> (see src/App.tsx).
 
    Every colour is defined here once. Components use semantic utility
    classes (bg-card, text-ink-soft, border-border) -- never raw hex, or
    they would only be correct in one of the two themes.
 ------------------------------------------------------------------- */
 @theme {
-  --font-sans: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-sans: 'Public Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-display: 'Big Shoulders', var(--font-sans);
+  --font-mono: 'Space Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 
   /* --- Type scale ---------------------------------------------------
-     Shifted up roughly one step from the Tailwind default. The smallest
-     type in the app is now 13px rather than 10px; body copy is 15-17px. */
+     Unchanged from the outdoor-legibility pass: smallest type in the
+     app is 13px, body copy is 15-17px. Only the typeface changed. */
   --text-xs: 0.8125rem;      /* 13px */
   --text-xs--line-height: 1.15rem;
   --text-sm: 0.9375rem;      /* 15px */
@@ -39,82 +49,95 @@
 
   /* --- Light (default) ---------------------------------------------- */
   /* Canvas */
-  --color-paper: #eef1f4;
-  --color-paper-soft: #e4e8ec;
+  --color-paper: #faf9f4;       /* gray-50 */
+  --color-paper-soft: #f3f1e9;  /* gray-100 */
 
   /* Ink */
-  --color-ink: #0d1218;        /* 17.6:1 on card */
-  --color-ink-soft: #48535f;   /*  7.7:1 on card */
-  --color-ink-faint: #66717c;  /*  5.1:1 on card */
+  --color-ink: #1c1c1a;        /* gray-900 · 17.1:1 on card */
+  --color-ink-soft: #4c4a44;   /* gray-700 ·  8.9:1 on card */
+  --color-ink-faint: #6b685f;  /* gray-600 ·  5.6:1 on card */
 
   /* Surfaces */
   --color-card: #ffffff;
-  --color-card-alt: #f4f6f8;
-  --color-surface: #f8fafb;
-  --color-card-dark: #ffffff;
+  --color-card-alt: #f3f1e9;    /* gray-100 */
+  --color-surface: #faf9f4;     /* gray-50 */
+  --color-card-dark: #173534;   /* teal-800, for surfaces meant to read as elevated/inverse (e.g. a sidebar) */
 
   /* Borders */
-  --color-border: #ccd4da;
-  --color-border-subtle: #b4bec6;
-  --color-border-strong: #8e99a3;
+  --color-border: #e6e2d6;        /* gray-200 */
+  --color-border-subtle: #cfcabc; /* gray-300 */
+  --color-border-strong: #aea99b; /* gray-400 */
 
-  /* Accent */
-  --color-accent: #0b6b45;     /* 6.4:1 on card */
-  --color-accent-hover: #095537;
+  /* Accent — Deep Teal is the app's one broad action color here,
+     mirroring how the source system uses --color-primary. */
+  --color-accent: #1f4b4a;        /* teal-700 · white text 9.7:1 */
+  --color-accent-hover: #2c6461;  /* teal-600 · white text 6.8:1 */
   --color-accent-ink: #ffffff;
-  --color-accent-soft: rgba(11, 107, 69, 0.12);
+  --color-accent-soft: rgba(31, 75, 74, 0.12);
 
   /* Semantic */
-  --color-positive: #0b6b45;
-  --color-warning: #8a5a00;    /* 5.8:1 on card */
-  --color-warning-soft: rgba(138, 90, 0, 0.12);
-  --color-danger: #b02230;     /* 6.6:1 on card */
-  --color-danger-hover: #8f1a26;
-  --color-danger-soft: rgba(176, 34, 48, 0.12);
-  --color-info: #1a4fc4;       /* 7.0:1 on card */
-  --color-info-soft: rgba(26, 79, 196, 0.12);
+  --color-positive: #3f7d45;      /* success · 5.0:1 on card */
+  --color-warning: #b94e1f;       /* orange-700, darkest of the accent ramp so it clears 4.5:1 as text · 5.0:1 */
+  --color-warning-soft: rgba(185, 78, 31, 0.12);
+  --color-danger: #b3261e;        /* 6.5:1 on card */
+  --color-danger-hover: #942019;
+  --color-danger-soft: rgba(179, 38, 30, 0.12);
+  --color-info: #3d7e79;          /* teal-500 · 4.7:1 on card */
+  --color-info-soft: rgba(61, 126, 121, 0.12);
 
-  --color-scrim: rgba(13, 18, 24, 0.55);
+  --color-scrim: rgba(18, 39, 38, 0.55);
 
-  --radius-card: 17px;
+  --radius-card: 12px;
   --radius-pill: 999px;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+
+  --shadow-sm: 0 1px 2px rgba(18, 39, 38, 0.08);
+  --shadow-md: 0 4px 10px rgba(18, 39, 38, 0.12);
+  --shadow-lg: 0 12px 28px rgba(18, 39, 38, 0.16);
 }
 
 /* --- Dark (site trailer / evening) ----------------------------------
-   The original Halid palette, with the two muted greys lifted so small
-   text clears AA: ink-soft #9aa5b1 on card #181d24 is ~6.5:1. */
+   Derived from the same teal/orange ramp, not the light values simply
+   inverted. Semantic reds/greens are swapped for lighter tints because
+   the base success/danger hexes read ~2-3:1 against teal-800/900 --
+   the accent flips to orange here because teal-on-teal has no contrast
+   to give; orange is exactly what the source kit's own dark surfaces
+   (sidebar, hero) use for the same reason. */
 :root[data-theme='dark'] {
-  --color-paper: #101319;
-  --color-paper-soft: #141820;
+  --color-paper: #122726;        /* teal-900 */
+  --color-paper-soft: #152f2e;
 
-  --color-ink: #f3f5f4;
-  --color-ink-soft: #9aa5b1;
-  --color-ink-faint: #7b8794;
+  --color-ink: #faf9f4;          /* gray-50 · 14.8:1 on paper */
+  --color-ink-soft: #cfcabc;     /* gray-300 ·  8.0:1 on card */
+  --color-ink-faint: #aea99b;    /* gray-400 ·  5.6:1 on card */
 
-  --color-card: #181d24;
-  --color-card-alt: #1e242d;
-  --color-surface: #12161c;
-  --color-card-dark: #0b0d12;
+  --color-card: #173534;         /* teal-800 */
+  --color-card-alt: #1f4b4a;     /* teal-700 */
+  --color-surface: #0e211f;
+  --color-card-dark: #0a1615;
 
-  --color-border: #293039;
-  --color-border-subtle: #3a4452;
-  --color-border-strong: #4a5666;
+  --color-border: #1f4b4a;       /* teal-700 */
+  --color-border-subtle: #2c6461;/* teal-600 */
+  --color-border-strong: #3d7e79;/* teal-500 */
 
-  --color-accent: #6af0b6;
-  --color-accent-hover: #5be0a5;
-  --color-accent-ink: #101319;
-  --color-accent-soft: rgba(106, 240, 182, 0.12);
+  --color-accent: #f5985f;       /* orange-400 · dark ink 7.8:1 */
+  --color-accent-hover: #f0793f; /* orange-500 · dark ink 6.1:1 */
+  --color-accent-active: #e8632b;/* orange-600 */
+  --color-accent-ink: #122726;   /* teal-900 -- dark text on the light-orange chip */
+  --color-accent-soft: rgba(245, 152, 95, 0.12);
 
-  --color-positive: #6af0b6;
-  --color-warning: #e2ce7d;
-  --color-warning-soft: rgba(226, 206, 125, 0.12);
-  --color-danger: #f08a99;
+  --color-positive: #8fcb92;     /* lightened success · 7.0:1 on card */
+  --color-warning: #f5985f;      /* orange-400 · 7.8:1 on card */
+  --color-warning-soft: rgba(245, 152, 95, 0.12);
+  --color-danger: #f08a99;       /* lightened danger · 5.5:1 on card */
   --color-danger-hover: #e16d7d;
   --color-danger-soft: rgba(240, 138, 153, 0.12);
-  --color-info: #a8bcff;
-  --color-info-soft: rgba(168, 188, 255, 0.12);
+  --color-info: #a0c4bd;         /* teal-300 · 8.3:1 on paper */
+  --color-info-soft: rgba(160, 196, 189, 0.12);
 
-  --color-scrim: rgba(4, 6, 9, 0.75);
+  --color-scrim: rgba(8, 18, 17, 0.75);
 
   color-scheme: dark;
 }
@@ -188,9 +211,11 @@
     border-radius: var(--radius-card);
   }
 
-  /* Micro uppercase eyebrow label */
+  /* Micro uppercase eyebrow label -- condensed display face for the
+     "site tag" motif (SITE 04 — EAST WING). */
   .label-micro {
-    font-size: 0.8125rem;
+    font-family: var(--font-display);
+    font-size: 0.875rem;
     font-weight: 700;
     letter-spacing: 0.06em;
     text-transform: uppercase;
@@ -221,7 +246,7 @@
     justify-content: center;
     min-width: 44px;
     min-height: 44px;
-    border-radius: 12px;
+    border-radius: var(--radius-md);
     color: var(--color-ink-soft);
     transition: background-color 0.15s ease, color 0.15s ease;
     cursor: pointer;
@@ -237,10 +262,12 @@
     min-height: 38px;
   }
 
-  /* Big tabular hero numeral */
+  /* Big tabular hero numeral -- condensed display face reads like
+     stenciled equipment signage at large sizes. */
   .num-hero {
+    font-family: var(--font-display);
     font-weight: 800;
-    letter-spacing: -0.03em;
+    letter-spacing: -0.02em;
     font-variant-numeric: tabular-nums;
     line-height: 1;
   }
@@ -351,10 +378,10 @@
 @keyframes pulse-ring {
   0%,
   100% {
-    box-shadow: 0 0 0 0 rgba(176, 34, 48, 0.35);
+    box-shadow: 0 0 0 0 rgba(179, 38, 30, 0.35);
   }
   50% {
-    box-shadow: 0 0 0 14px rgba(176, 34, 48, 0);
+    box-shadow: 0 0 0 14px rgba(179, 38, 30, 0);
   }
 }
 

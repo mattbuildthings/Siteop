@@ -1,0 +1,93 @@
+<!-- @dsCard group="Web App" viewport="1200x720" name="Site Ops — Web App" subtitle="Office dashboard: sites, site detail, note review" -->
+<!DOCTYPE html><html><head><meta charset="utf-8">
+<link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+<script src="../../_ds_bundle.js"></script>
+<style>body{margin:0;background:var(--color-bg);font-family:var(--font-body)}*{box-sizing:border-box}</style>
+</head><body>
+<div id="root"></div>
+<script type="text/babel">
+const {Button,Badge,Card,NoteCard,Tabs,Dialog,Input}=window.SiteOpsDesignSystem_019e16;
+const I=({name,size=18,color})=><i data-lucide={name} style={{width:size,height:size,color}}></i>;
+
+const SITES=[
+{id:1,name:'East Wing — Foundation',crew:'Framing',notes:14,pending:3,status:'active'},
+{id:2,name:'North Lot — Grading',crew:'Excavation',notes:6,pending:0,status:'active'},
+{id:3,name:'Riverside Annex',crew:'Electrical',notes:22,pending:1,status:'on-hold'},
+];
+const NOTES=[
+{id:1,type:'photo',title:'Foundation crack — east wall',timestamp:'08:42 AM',author:'J. Alvarez',synced:false},
+{id:2,type:'audio',title:'Walkthrough — 2nd floor framing',timestamp:'09:15 AM',author:'M. Chen',synced:true},
+{id:3,type:'photo',title:'Rebar spacing — column C4',timestamp:'10:02 AM',author:'J. Alvarez',synced:true},
+{id:4,type:'audio',title:'Safety briefing recap',timestamp:'10:30 AM',author:'D. Osei',synced:true},
+];
+
+function Sidebar({onNav,active}){
+return <div style={{width:220,background:'var(--teal-800)',color:'#fff',padding:'var(--space-5) var(--space-4)',display:'flex',flexDirection:'column',gap:'var(--space-6)'}}>
+<div style={{fontFamily:'var(--font-display)',fontWeight:700,fontSize:26,textTransform:'uppercase'}}>Site<span style={{color:'var(--orange-500)'}}>Ops</span></div>
+<div style={{display:'flex',flexDirection:'column',gap:2}}>
+{['Sites','Team','Reports','Settings'].map(n=><div key={n} onClick={()=>onNav(n)} style={{padding:'10px 12px',borderRadius:'var(--radius-md)',fontSize:14,fontWeight:600,cursor:'pointer',background:active===n?'var(--teal-700)':'transparent',color:active===n?'#fff':'var(--teal-300)'}}>{n}</div>)}
+</div>
+</div>;
+}
+
+function SiteRow({site,onOpen}){
+return <div onClick={()=>onOpen(site)} style={{display:'flex',alignItems:'center',gap:'var(--space-4)',padding:'var(--space-4)',borderBottom:'1px solid var(--color-border)',cursor:'pointer'}}>
+<div style={{flex:1,fontSize:16,fontWeight:600,color:'var(--color-text-primary)'}}>{site.name}</div>
+<div style={{width:120,fontSize:13,color:'var(--color-text-secondary)'}}>{site.crew}</div>
+<div style={{width:90,fontFamily:'var(--font-mono)',fontSize:13,color:'var(--color-text-secondary)'}}>{site.notes} notes</div>
+<div style={{width:110}}>{site.pending>0?<Badge tone="warning">{site.pending} pending</Badge>:<Badge tone="success">Synced</Badge>}</div>
+<div style={{width:90}}><Badge tone={site.status==='active'?'primary':'neutral'}>{site.status}</Badge></div>
+</div>;
+}
+
+function SitesList({onOpenSite}){
+return <div style={{flex:1,padding:'var(--space-6)'}}>
+<div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'var(--space-5)'}}>
+<div style={{fontFamily:'var(--font-display)',fontWeight:700,fontSize:32,textTransform:'uppercase',color:'var(--color-text-primary)'}}>Sites</div>
+<Button variant="accent" icon={<I name="plus" size={16} color="#fff"/>}>New Site</Button>
+</div>
+<Card padding="0">
+<div style={{display:'flex',padding:'12px 16px',borderBottom:'2px solid var(--color-border)',fontSize:12,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.06em',color:'var(--color-text-tertiary)'}}>
+<div style={{flex:1}}>Site</div><div style={{width:120}}>Crew</div><div style={{width:90}}>Notes</div><div style={{width:110}}>Sync</div><div style={{width:90}}>Status</div>
+</div>
+{SITES.map(s=><SiteRow key={s.id} site={s} onOpen={onOpenSite}/>)}
+</Card>
+</div>;
+}
+
+function SiteDetail({site,onBack,onOpenNote}){
+const[tab,setTab]=React.useState('Notes');
+return <div style={{flex:1,padding:'var(--space-6)'}}>
+<div onClick={onBack} style={{display:'flex',alignItems:'center',gap:6,color:'var(--color-primary)',fontSize:13,fontWeight:600,cursor:'pointer',marginBottom:'var(--space-3)'}}><I name="arrow-left" size={14}/> All sites</div>
+<div style={{fontFamily:'var(--font-display)',fontWeight:700,fontSize:32,textTransform:'uppercase',color:'var(--color-text-primary)',marginBottom:'var(--space-2)'}}>{site.name}</div>
+<div style={{fontFamily:'var(--font-mono)',fontSize:13,color:'var(--color-text-secondary)',marginBottom:'var(--space-5)'}}>34.0522° N, 118.2437° W · Crew: {site.crew}</div>
+<Tabs tabs={['Notes','Photos','Team']} active={tab} onChange={setTab}/>
+<div style={{marginTop:'var(--space-4)',display:'flex',flexDirection:'column',gap:8}}>
+{tab==='Notes'&&NOTES.map(n=><div key={n.id} onClick={()=>onOpenNote(n)} style={{cursor:'pointer'}}><NoteCard {...n}/></div>)}
+{tab!=='Notes'&&<div style={{color:'var(--color-text-tertiary)',fontSize:14,padding:'var(--space-5) 0'}}>No {tab.toLowerCase()} yet.</div>}
+</div>
+</div>;
+}
+
+function App(){
+const[nav,setNav]=React.useState('Sites');
+const[site,setSite]=React.useState(null);
+const[note,setNote]=React.useState(null);
+React.useEffect(()=>{lucide.createIcons()},[nav,site,note]);
+return <div style={{display:'flex',minHeight:720}}>
+<Sidebar onNav={n=>{setNav(n);setSite(null)}} active={nav}/>
+{nav!=='Sites'&&<div style={{flex:1,padding:'var(--space-6)',color:'var(--color-text-tertiary)'}}>{nav} — not built in this kit.</div>}
+{nav==='Sites'&&(site?<SiteDetail site={site} onBack={()=>setSite(null)} onOpenNote={setNote}/>:<SitesList onOpenSite={setSite}/>)}
+{note&&<Dialog title={note.type==='photo'?'Photo Note':'Audio Note'} onClose={()=>setNote(null)} footer={<Button variant="primary" size="sm" onClick={()=>setNote(null)}>Close</Button>}>
+<div style={{fontWeight:600,color:'var(--color-text-primary)',marginBottom:6}}>{note.title}</div>
+<div style={{fontFamily:'var(--font-mono)',fontSize:12}}>{note.timestamp} · {note.author}</div>
+</Dialog>}
+</div>;
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body></html>

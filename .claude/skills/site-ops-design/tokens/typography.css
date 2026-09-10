@@ -1,0 +1,9 @@
+:root{
+--font-display:'Big Shoulders',sans-serif;
+--font-body:'Public Sans',-apple-system,sans-serif;
+--font-mono:'Space Mono',monospace;
+--fs-2xs:12px;--fs-xs:13px;--fs-sm:14px;--fs-md:16px;--fs-lg:18px;--fs-xl:20px;--fs-2xl:24px;--fs-3xl:32px;--fs-4xl:44px;--fs-5xl:60px;
+--lh-tight:1.1;/* @kind other */--lh-snug:1.3;/* @kind other */--lh-normal:1.5;/* @kind other */--lh-relaxed:1.65;/* @kind other */
+--fw-regular:400;/* @kind other */--fw-medium:500;/* @kind other */--fw-semibold:600;/* @kind other */--fw-bold:700;/* @kind other */--fw-display:700;/* @kind other */
+--ls-display:0.01em;/* @kind other */--ls-caps:0.08em;/* @kind other */
+}

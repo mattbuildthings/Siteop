@@ -16,6 +16,8 @@ import {
 import { Project, ROLE_LABELS, UserProfile, UserRole } from '../lib/types';
 import { supabase } from '../lib/supabase';
 import { Toast } from '../components/Toast';
+import { Badge } from '../components/ui/Badge';
+import { Button } from '../components/ui/Button';
 import { isAdmin, isManager } from '../lib/session';
 import { fetchWeather, formatWeather } from '../lib/weather';
 
@@ -223,10 +225,9 @@ export const ProjectsRoute: React.FC<ProjectsRouteProps> = ({
         </div>
 
         {manager && (
-          <button onClick={openCreate} className="pill px-3 py-2.5 btn-primary shrink-0">
-            <Plus className="w-4 h-4" />
-            <span>Thêm</span>
-          </button>
+          <Button onClick={openCreate} icon={<Plus className="w-4 h-4" />} className="shrink-0">
+            Thêm
+          </Button>
         )}
       </div>
 
@@ -268,9 +269,9 @@ export const ProjectsRoute: React.FC<ProjectsRouteProps> = ({
                       )}
                       <span className="text-base font-bold text-ink">{p.name}</span>
                       {!p.is_active && (
-                        <span className="pill px-2 py-0.5 bg-card-alt text-ink-soft border border-border">
+                        <Badge tone="neutral" className="!h-auto !px-2 !py-0.5 !normal-case !tracking-normal">
                           Đã đóng
-                        </span>
+                        </Badge>
                       )}
                     </div>
 
@@ -299,19 +300,12 @@ export const ProjectsRoute: React.FC<ProjectsRouteProps> = ({
 
                 {manager && (
                   <div className="flex items-center gap-2 pt-2 border-t border-border">
-                    <button
-                      onClick={() => openEdit(p)}
-                      className="pill px-3 py-2 bg-card-alt text-ink border border-border-subtle hover:border-border-strong transition cursor-pointer"
-                    >
+                    <Button variant="secondary" size="sm" onClick={() => openEdit(p)}>
                       Sửa
-                    </button>
-                    <button
-                      onClick={() => toggleActive(p)}
-                      className="pill px-3 py-2 bg-card-alt text-ink-soft border border-border-subtle hover:border-border-strong transition cursor-pointer"
-                    >
-                      <Archive className="w-4 h-4" />
+                    </Button>
+                    <Button variant="secondary" size="sm" onClick={() => toggleActive(p)} icon={<Archive className="w-4 h-4" />}>
                       {p.is_active ? 'Đóng' : 'Mở lại'}
-                    </button>
+                    </Button>
                   </div>
                 )}
               </div>
@@ -454,18 +448,15 @@ export const ProjectsRoute: React.FC<ProjectsRouteProps> = ({
               <div className="space-y-2 p-3 rounded-card bg-card-alt border border-border">
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-sm font-bold text-ink">Toạ độ công trình</span>
-                  <button
+                  <Button
+                    variant="secondary"
+                    size="sm"
                     onClick={useCurrentLocation}
                     disabled={locating}
-                    className="pill px-3 py-2 bg-card text-ink border border-border-subtle hover:border-accent transition cursor-pointer disabled:opacity-50"
+                    icon={locating ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Crosshair className="w-4 h-4" />}
                   >
-                    {locating ? (
-                      <RefreshCw className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <Crosshair className="w-4 h-4" />
-                    )}
-                    <span>Vị trí hiện tại</span>
-                  </button>
+                    Vị trí hiện tại
+                  </Button>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2">
@@ -500,12 +491,9 @@ export const ProjectsRoute: React.FC<ProjectsRouteProps> = ({
             </div>
 
             <div className="flex items-center gap-2 pt-3 border-t border-border">
-              <button
-                onClick={() => setShowForm(false)}
-                className="flex-1 min-h-[48px] rounded-card bg-card-alt text-ink border border-border-subtle font-bold text-sm cursor-pointer"
-              >
+              <Button variant="secondary" size="lg" onClick={() => setShowForm(false)} className="flex-1">
                 Hủy
-              </button>
+              </Button>
               <button onClick={handleSave} disabled={saving} className="btn-block flex-1">
                 {saving ? <RefreshCw className="w-5 h-5 animate-spin" /> : <CheckCircle2 className="w-5 h-5" />}
                 <span>{saving ? 'Đang lưu...' : 'Lưu'}</span>

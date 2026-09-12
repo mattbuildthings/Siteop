@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Lock, Mail, AlertCircle, HardHat, User as UserIcon } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useLanguage } from '../lib/i18n';
+import { Button } from './ui/Button';
 
 interface AuthScreenProps {
   onSuccess: () => void;
@@ -174,15 +175,16 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess }) => {
             </div>
           </div>
 
-          <button type="submit" disabled={loading} className="btn-block">
-            {loading ? (
-              <span className="inline-block w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-            ) : mode === 'login' ? (
-              t('auth.submitLogin')
-            ) : (
-              t('auth.submitSignup')
-            )}
-          </button>
+          <Button
+            type="submit"
+            variant="accent"
+            size="lg"
+            disabled={loading}
+            className="w-full"
+            icon={loading ? <span className="inline-block w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" /> : undefined}
+          >
+            {loading ? null : mode === 'login' ? t('auth.submitLogin') : t('auth.submitSignup')}
+          </Button>
         </form>
 
         <div className="text-center">

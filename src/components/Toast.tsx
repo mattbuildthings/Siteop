@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { CheckCircle2, AlertCircle, Info } from 'lucide-react';
+import { Toast as DSToast } from './ui/Toast';
 
 interface ToastProps {
   message: string;
@@ -9,6 +10,13 @@ interface ToastProps {
   duration?: number;
 }
 
+const TONE_BY_TYPE = { success: 'success', error: 'danger', info: 'info' } as const;
+const ICON_BY_TYPE = { success: CheckCircle2, error: AlertCircle, info: Info } as const;
+
+/** Now built on the design-system Toast (src/components/ui/Toast.tsx) —
+ * this wrapper only adds the auto-dismiss timer and the fixed-position
+ * placement, keeping the message/type/isOpen/onClose API call sites
+ * already depend on. */
 export const Toast: React.FC<ToastProps> = ({
   message,
   type = 'success',
@@ -24,21 +32,14 @@ export const Toast: React.FC<ToastProps> = ({
 
   if (!isOpen) return null;
 
-  const styles =
-    type === 'success'
-      ? { bg: 'bg-accent/15 border-accent/30', text: 'text-accent', Icon: CheckCircle2 }
-      : type === 'error'
-      ? { bg: 'bg-danger/15 border-danger/30', text: 'text-danger', Icon: AlertCircle }
-      : { bg: 'bg-info/15 border-info/30', text: 'text-info', Icon: Info };
-
-  const { bg, text, Icon } = styles;
+  const Icon = ICON_BY_TYPE[type];
 
   return (
     <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 animate-bounce-in w-[90%] max-w-sm" role="status">
-      <div className={`flex items-center gap-3 px-4 py-3 rounded-card border bg-card ${bg}`}>
-        <Icon className={`w-5 h-5 shrink-0 ${text}`} />
-        <span className="text-xs font-semibold text-ink">{message}</span>
-      </div>
+      <DSToast tone={TONE_BY_TYPE[type]}>
+        <Icon className="w-5 h-5 shrink-0" />
+        <span>{message}</span>
+      </DSToast>
     </div>
   );
 };

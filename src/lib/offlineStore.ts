@@ -1,73 +1,19 @@
-import { ExtractedData, OfflineEntry, Weather } from './types';
+import { ExtractedData, Weather } from './types';
 import { supabase } from './supabase';
-import { getNextLogNumber } from './session';
+import { blobToBase64, base64ToBlob } from './blobEncoding';
+import {
+  OfflineQueueItem,
+  getOfflineQueue,
+  getOfflineQueueItem,
+  updateOfflineQueueItem,
+  removeFromOfflineQueue
+} from './offlineDb';
 
-const QUEUE_STORAGE_KEY = 'siteop_offline_queue_v1';
-
-export function getOfflineQueue(): OfflineEntry[] {
-  try {
-    const raw = localStorage.getItem(QUEUE_STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch (err) {
-    console.error('Failed to read offline queue from localStorage:', err);
-    return [];
-  }
-}
-
-export function saveOfflineQueue(queue: OfflineEntry[]): void {
-  try {
-    localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(queue));
-  } catch (err) {
-    // localStorage is ~5MB and base64 inflates blobs by a third, so a couple of
-    // photos can fill it. Surface it rather than dropping the entry silently.
-    console.error('Failed to save offline queue to localStorage:', err);
-    throw new Error(
-      'Bộ nhớ offline đã đầy — vui lòng kết nối mạng để đồng bộ các nhật ký đang chờ trước khi ghi thêm.'
-    );
-  }
-}
-
-export function addToOfflineQueue(entry: Omit<OfflineEntry, 'id' | 'createdAt' | 'retryCount'>): OfflineEntry {
-  const queue = getOfflineQueue();
-  const newEntry: OfflineEntry = {
-    ...entry,
-    id: `offline_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
-    createdAt: new Date().toISOString(),
-    retryCount: 0
-  };
-  queue.push(newEntry);
-  saveOfflineQueue(queue);
-  return newEntry;
-}
-
-export function removeFromOfflineQueue(id: string): void {
-  const queue = getOfflineQueue().filter((item) => item.id !== id);
-  saveOfflineQueue(queue);
-}
-
-// Convert File / Blob to Base64 String for offline localStorage storage
-export function blobToBase64(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
-  });
-}
-
-export function base64ToBlob(base64Data: string, fallbackMime: string = 'application/octet-stream'): Blob {
-  const parts = base64Data.split(';base64,');
-  const contentType = parts.length > 1 ? parts[0].replace('data:', '') : fallbackMime;
-  const raw = window.atob(parts.length > 1 ? parts[1] : parts[0]);
-  const rawLength = raw.length;
-  const uInt8Array = new Uint8Array(rawLength);
-
-  for (let i = 0; i < rawLength; ++i) {
-    uInt8Array[i] = raw.charCodeAt(i);
-  }
-
-  return new Blob([uInt8Array], { type: contentType });
-}
+// Re-exported so existing call sites (CaptureRoute, DiaryRoute) don't need to
+// know these moved -- the offline queue itself now lives in offlineDb.ts
+// (IndexedDB), but blob/base64 conversion is still needed here for uploads
+// and for the Gemini retry payload.
+export { blobToBase64, base64ToBlob };
 
 /**
  * Uploads a blob to Supabase Storage (or returns an inline Data URL if the
@@ -113,12 +59,14 @@ export interface CreateEntryInput {
   fileAndLock?: boolean;
   /** A human read the AI extraction before this was saved. */
   reviewed?: boolean;
+  /** Typed name confirming the log is accurate. Only recorded when fileAndLock is true. */
+  signedOffName?: string | null;
 }
 
 /**
  * Single place an entry is created, shared by the capture flow and the offline
  * queue flush. Writes diary_entries, then the entry_meta side table (project,
- * weather, work date, lock state), the photo gallery, and the flag row.
+ * weather, work date, lock state, sign-off), the photo gallery, and the flag row.
  *
  * diary_entries keeps its original column shape -- everything new lives in
  * entry_meta. See the header of the 20260909 migration for why.
@@ -155,8 +103,9 @@ export async function createEntry(input: CreateEntryInput): Promise<{ id: string
 
   const entryId = (newEntry as { id: string }).id;
 
-  // entry_meta is inserted already locked when filing, so the lock lands in the
-  // same write rather than leaving a window where the record is mutable.
+  // entry_meta is inserted already locked (and signed) when filing, so the
+  // lock lands in the same write rather than leaving a window where the
+  // filed record is still mutable.
   const { error: metaErr } = await supabase.from('entry_meta').insert({
     entry_id: entryId,
     project_id: input.projectId ?? null,
@@ -166,7 +115,10 @@ export async function createEntry(input: CreateEntryInput): Promise<{ id: string
     locked_at: input.fileAndLock ? now : null,
     locked_by: input.fileAndLock ? userId : null,
     reviewed_at: input.reviewed ? now : null,
-    reviewed_by: input.reviewed ? userId : null
+    reviewed_by: input.reviewed ? userId : null,
+    signed_off_by: input.fileAndLock ? userId : null,
+    signed_off_name: input.fileAndLock ? input.signedOffName ?? null : null,
+    signed_off_at: input.fileAndLock ? now : null
   });
 
   if (metaErr) {
@@ -204,62 +156,102 @@ export async function createEntry(input: CreateEntryInput): Promise<{ id: string
   return { id: entryId };
 }
 
-/**
- * Syncs queued offline entries to Supabase. Offline entries are always created
- * as drafts: nothing captured without a signal gets filed and locked until
- * somebody has looked at it online.
- */
+/** Uploads one queued item's media and creates its diary_entries row. */
+async function syncQueueItem(item: OfflineQueueItem): Promise<{ id: string } | { error: string }> {
+  let voiceUrl: string | null = null;
+  const photoUrls: string[] = [];
+
+  if (item.voiceBlob) {
+    voiceUrl = await uploadMediaToSupabase(item.voiceBlob, 'voice-memos', 'voice.mp4');
+  }
+
+  for (const photoBlob of item.photoBlobs || []) {
+    photoUrls.push(await uploadMediaToSupabase(photoBlob, 'photos', 'photo.jpg'));
+  }
+
+  // Offline entries are always created as drafts, sign-off unset: nothing
+  // captured without a signal gets filed and locked until somebody has
+  // reviewed and signed it -- through the diary screen once it syncs up.
+  return createEntry({
+    voiceUrl,
+    photoUrls,
+    transcription: item.transcription ?? null,
+    extractedData: item.extractedData ?? null,
+    projectId: item.projectId ?? null,
+    logNumber: item.jobNumber ?? null,
+    workDate: item.workDate ?? item.createdAt.split('T')[0],
+    weather: item.weather ?? null,
+    createdAt: item.createdAt,
+    fileAndLock: false,
+    reviewed: false
+  });
+}
+
+/** Syncs every queued offline entry to Supabase, updating each item's visible status as it goes. */
 export async function processOfflineQueue(
   onEntryProcessed?: (syncedCount: number) => void
 ): Promise<{ success: number; failed: number }> {
-  const queue = getOfflineQueue();
+  const queue = await getOfflineQueue();
   if (queue.length === 0) return { success: 0, failed: 0 };
 
   let successCount = 0;
   let failedCount = 0;
 
-  for (const item of [...queue]) {
+  for (const item of queue) {
     try {
-      let voiceUrl: string | null = null;
-      const photoUrls: string[] = [];
-
-      if (item.voiceBlobBase64) {
-        const audioBlob = base64ToBlob(item.voiceBlobBase64, item.audioMimeType || 'audio/mp4');
-        voiceUrl = await uploadMediaToSupabase(audioBlob, 'voice-memos', 'voice.mp4');
-      }
-
-      for (const photoBase64 of item.photoBlobsBase64 || []) {
-        const photoBlob = base64ToBlob(photoBase64, item.photoMimeType || 'image/jpeg');
-        photoUrls.push(await uploadMediaToSupabase(photoBlob, 'photos', 'photo.jpg'));
-      }
-
-      const result = await createEntry({
-        voiceUrl,
-        photoUrls,
-        transcription: item.transcription ?? null,
-        extractedData: item.extractedData ?? null,
-        projectId: item.projectId ?? null,
-        logNumber: item.jobNumber ?? null,
-        workDate: item.workDate ?? item.createdAt.split('T')[0],
-        weather: item.weather ?? null,
-        createdAt: item.createdAt,
-        fileAndLock: false,
-        reviewed: false
-      });
+      await updateOfflineQueueItem(item.id, { status: 'syncing', errorMessage: null });
+      const result = await syncQueueItem(item);
 
       if ('id' in result) {
-        removeFromOfflineQueue(item.id);
+        await removeFromOfflineQueue(item.id);
         successCount++;
         if (onEntryProcessed) onEntryProcessed(successCount);
       } else {
         console.error('Failed to insert queued entry into Supabase:', result.error);
+        await updateOfflineQueueItem(item.id, {
+          status: 'failed',
+          errorMessage: result.error,
+          retryCount: item.retryCount + 1
+        });
         failedCount++;
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error processing offline queue item:', err);
+      await updateOfflineQueueItem(item.id, {
+        status: 'failed',
+        errorMessage: err?.message || 'Đồng bộ thất bại',
+        retryCount: item.retryCount + 1
+      });
       failedCount++;
     }
   }
 
   return { success: successCount, failed: failedCount };
+}
+
+/** Manual per-item retry, for the "Thử lại" button on a failed queue entry. */
+export async function retryOfflineQueueItem(id: string): Promise<{ success: boolean; error?: string }> {
+  const item = await getOfflineQueueItem(id);
+  if (!item) return { success: false, error: 'Không tìm thấy mục trong hàng chờ.' };
+
+  try {
+    await updateOfflineQueueItem(id, { status: 'syncing', errorMessage: null });
+    const result = await syncQueueItem(item);
+
+    if ('id' in result) {
+      await removeFromOfflineQueue(id);
+      return { success: true };
+    }
+
+    await updateOfflineQueueItem(id, {
+      status: 'failed',
+      errorMessage: result.error,
+      retryCount: item.retryCount + 1
+    });
+    return { success: false, error: result.error };
+  } catch (err: any) {
+    const message = err?.message || 'Đồng bộ thất bại';
+    await updateOfflineQueueItem(id, { status: 'failed', errorMessage: message, retryCount: item.retryCount + 1 });
+    return { success: false, error: message };
+  }
 }

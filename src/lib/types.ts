@@ -217,19 +217,6 @@ export interface SyncLog {
   error_message?: string | null;
 }
 
-export interface OfflineEntry {
-  id: string;
-  createdAt: string;
-  voiceBlobBase64?: string;
-  /** Multiple photos per entry — index 0 becomes the cover photo. */
-  photoBlobsBase64?: string[];
-  audioMimeType?: string;
-  photoMimeType?: string;
-  retryCount: number;
-  jobNumber?: string;
-  projectId?: string | null;
-  workDate?: string | null;
-  weather?: Weather | null;
-  transcription?: string | null;
-  extractedData?: ExtractedData | null;
-}
+// The offline queue's own item type (OfflineQueueItem) lives in lib/offlineDb.ts,
+// next to the IndexedDB code that owns it, since it holds browser Blob values
+// rather than the plain DTO shapes the rest of this file mirrors from Postgres.

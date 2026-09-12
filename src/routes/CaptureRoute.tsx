@@ -20,11 +20,15 @@ import {
   X
 } from 'lucide-react';
 import { ExtractedData, Project, UserProfile, Weather } from '../lib/types';
-import { addToOfflineQueue, blobToBase64, createEntry, uploadMediaToSupabase } from '../lib/offlineStore';
+import { blobToBase64, createEntry, uploadMediaToSupabase } from '../lib/offlineStore';
+import { addToOfflineQueue } from '../lib/offlineDb';
 import { analyzeAudio, extractFromText } from '../lib/geminiFallback';
-import { getNextLogNumber, canWrite } from '../lib/session';
+import { getNextLogNumber, canWrite, displayName } from '../lib/session';
 import { fetchWeather, formatWeather, isAdverseWeather } from '../lib/weather';
 import { Toast } from '../components/Toast';
+import { Badge } from '../components/ui/Badge';
+import { Button } from '../components/ui/Button';
+import { CollapsibleSection } from '../components/CollapsibleSection';
 
 interface CaptureRouteProps {
   isOnline: boolean;
@@ -47,6 +51,57 @@ const emptyExtraction = (): ExtractedData => ({
 });
 
 type Phase = 'capture' | 'review';
+
+interface RowField {
+  key: string;
+  placeholder: string;
+  span: number; // out of a 6-column grid
+  type?: 'text' | 'number';
+}
+
+/** Compact multi-field row editor shared by the six content-field sections below. */
+const ArrayRowsEditor: React.FC<{
+  items: Array<Record<string, any>>;
+  fields: RowField[];
+  emptyLabel: string;
+  onAdd: () => void;
+  onUpdate: (idx: number, field: string, value: string) => void;
+  onRemove: (idx: number) => void;
+}> = ({ items, fields, emptyLabel, onAdd, onUpdate, onRemove }) => (
+  <div className="space-y-2">
+    {items.length === 0 ? (
+      <p className="text-sm text-ink-soft">{emptyLabel}</p>
+    ) : (
+      items.map((item, idx) => (
+        <div key={idx} className="flex items-start gap-2">
+          <div className="flex-1 grid grid-cols-6 gap-1.5">
+            {fields.map((f) => (
+              <input
+                key={f.key}
+                type={f.type === 'number' ? 'number' : 'text'}
+                value={item[f.key] ?? ''}
+                onChange={(e) => onUpdate(idx, f.key, e.target.value)}
+                placeholder={f.placeholder}
+                style={{ gridColumn: `span ${f.span} / span ${f.span}` }}
+                className="field px-2.5 py-2 text-sm"
+              />
+            ))}
+          </div>
+          <button
+            onClick={() => onRemove(idx)}
+            className="icon-btn icon-btn-sm hover:text-danger shrink-0"
+            aria-label="Xóa dòng"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        </div>
+      ))
+    )}
+    <Button variant="secondary" size="sm" onClick={onAdd} icon={<Plus className="w-4 h-4" />}>
+      Thêm
+    </Button>
+  </div>
+);
 
 export const CaptureRoute: React.FC<CaptureRouteProps> = ({
   isOnline,
@@ -75,6 +130,7 @@ export const CaptureRoute: React.FC<CaptureRouteProps> = ({
   // Review state (the human-confirm step)
   const [transcript, setTranscript] = useState('');
   const [extraction, setExtraction] = useState<ExtractedData>(emptyExtraction());
+  const [signOffName, setSignOffName] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isReExtracting, setIsReExtracting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -222,6 +278,7 @@ export const CaptureRoute: React.FC<CaptureRouteProps> = ({
     setPhotos([]);
     setTranscript('');
     setExtraction(emptyExtraction());
+    setSignOffName('');
     setPhase('capture');
   };
 
@@ -242,6 +299,8 @@ export const CaptureRoute: React.FC<CaptureRouteProps> = ({
       await saveOfflineDraft();
       return;
     }
+
+    setSignOffName((prev) => prev || displayName(profile));
 
     if (!audioBlob) {
       // Photos only — nothing to transcribe, go straight to review.
@@ -269,7 +328,7 @@ export const CaptureRoute: React.FC<CaptureRouteProps> = ({
     }
   };
 
-  /** Re-run extraction after the foreman corrects the transcript. */
+  /** Re-run extraction after the user corrects the transcript. */
   const handleReExtract = async () => {
     if (!transcript.trim()) return;
     setIsReExtracting(true);
@@ -286,16 +345,14 @@ export const CaptureRoute: React.FC<CaptureRouteProps> = ({
   };
 
   // --- Save ----------------------------------------------------------------
+  // Queues the raw Blobs directly in IndexedDB -- no base64 round-trip, so
+  // nothing is inflated and nothing is capped at localStorage's ~5MB.
   const saveOfflineDraft = async () => {
     setIsSaving(true);
     try {
-      const voiceBase64 = audioBlob ? await blobToBase64(audioBlob) : undefined;
-      const photoBase64s: string[] = [];
-      for (const p of photos) photoBase64s.push(await blobToBase64(p.blob));
-
-      addToOfflineQueue({
-        voiceBlobBase64: voiceBase64,
-        photoBlobsBase64: photoBase64s,
+      await addToOfflineQueue({
+        voiceBlob: audioBlob ?? undefined,
+        photoBlobs: photos.map((p) => p.blob),
         audioMimeType: audioBlob?.type,
         photoMimeType: photos[0]?.blob.type,
         projectId: activeProject?.id ?? null,
@@ -316,6 +373,11 @@ export const CaptureRoute: React.FC<CaptureRouteProps> = ({
   const handleSave = async (fileAndLock: boolean) => {
     if (!activeProject) {
       showToast('Vui lòng chọn công trình trước khi lưu.', 'info');
+      return;
+    }
+
+    if (fileAndLock && !signOffName.trim()) {
+      showToast('Vui lòng nhập tên người ký xác nhận trước khi lưu kho.', 'info');
       return;
     }
 
@@ -343,7 +405,8 @@ export const CaptureRoute: React.FC<CaptureRouteProps> = ({
         workDate,
         weather,
         fileAndLock,
-        reviewed: true
+        reviewed: true,
+        signedOffName: fileAndLock ? signOffName.trim() : null
       });
 
       if ('error' in result) throw new Error(result.error);
@@ -380,6 +443,31 @@ export const CaptureRoute: React.FC<CaptureRouteProps> = ({
         i === idx ? { ...l, [field]: field === 'count' ? Number(value) || 0 : value } : l
       )
     }));
+  };
+
+  // Generic row editing for the six daily-log content fields below. Each is a
+  // loosely-typed array of small records, so one add/update/remove triple
+  // covers all of them instead of six hand-written copies of the materials/
+  // labor pattern above.
+  type ArrayFieldKey = 'delays' | 'deliveries' | 'equipment' | 'visitors' | 'quantities';
+
+  const addArrayRow = (key: ArrayFieldKey, blank: Record<string, string>) => {
+    setExtraction((prev) => ({ ...prev, [key]: [...((prev[key] as any[]) || []), blank] }));
+  };
+
+  const updateArrayRow = (key: ArrayFieldKey, idx: number, field: string, value: string) => {
+    setExtraction((prev) => ({
+      ...prev,
+      [key]: ((prev[key] as any[]) || []).map((row, i) => (i === idx ? { ...row, [field]: value } : row))
+    }));
+  };
+
+  const removeArrayRow = (key: ArrayFieldKey, idx: number) => {
+    setExtraction((prev) => ({ ...prev, [key]: ((prev[key] as any[]) || []).filter((_, i) => i !== idx) }));
+  };
+
+  const updateSafety = (field: 'toolbox_talk' | 'observations' | 'incidents', value: string) => {
+    setExtraction((prev) => ({ ...prev, safety: { ...prev.safety, [field]: value } }));
   };
 
   const weatherLine = formatWeather(weather);
@@ -510,9 +598,9 @@ export const CaptureRoute: React.FC<CaptureRouteProps> = ({
                   </span>
                   Thu Âm Giọng Nói
                 </span>
-                <span className="font-mono text-accent font-bold text-sm pill bg-accent/12 border border-accent/40 px-2.5 py-1">
+                <Badge tone="primary" className="font-mono text-sm normal-case tracking-normal h-auto px-2.5 py-1">
                   {formatTime(recordingTime)}
-                </span>
+                </Badge>
               </div>
 
               {/* A script beats a blank record button: better dictation in,
@@ -589,9 +677,12 @@ export const CaptureRoute: React.FC<CaptureRouteProps> = ({
                   </span>
                   Ảnh Hiện Trường
                 </span>
-                <span className="text-sm text-ink-soft font-bold">
-                  {photos.length}/{MAX_PHOTOS}
-                </span>
+                <Badge
+                  tone={photos.length >= MAX_PHOTOS ? 'warning' : 'neutral'}
+                  className="!h-auto !px-2.5 !py-1 !normal-case !tracking-normal"
+                >
+                  {photos.length}/{MAX_PHOTOS} ảnh
+                </Badge>
               </div>
 
               {photos.length > 0 && (
@@ -616,7 +707,7 @@ export const CaptureRoute: React.FC<CaptureRouteProps> = ({
                 </div>
               )}
 
-              {photos.length < MAX_PHOTOS && (
+              {photos.length < MAX_PHOTOS ? (
                 <button
                   onClick={() => fileInputRef.current?.click()}
                   disabled={isAnalyzing || isSaving}
@@ -624,9 +715,14 @@ export const CaptureRoute: React.FC<CaptureRouteProps> = ({
                 >
                   <Camera className="w-7 h-7 text-ink" />
                   <span className="text-sm text-ink font-bold">
-                    {photos.length === 0 ? 'Chạm để chụp hoặc chọn ảnh' : 'Thêm ảnh'}
+                    {photos.length === 0 ? 'Chạm để chụp hoặc chọn ảnh — tối đa 10' : 'Thêm ảnh'}
                   </span>
+                  {photos.length > 0 && (
+                    <span className="text-xs text-ink-soft">Còn thêm được {MAX_PHOTOS - photos.length} ảnh</span>
+                  )}
                 </button>
+              ) : (
+                <p className="text-xs text-ink-soft text-center">Đã đạt tối đa {MAX_PHOTOS} ảnh cho nhật ký này.</p>
               )}
 
               <input
@@ -723,14 +819,15 @@ export const CaptureRoute: React.FC<CaptureRouteProps> = ({
           <div className="card p-4 space-y-2">
             <div className="flex items-center justify-between border-b border-border pb-2">
               <h3 className="text-sm font-bold text-ink">Văn bản ghi âm</h3>
-              <button
+              <Button
+                variant="secondary"
+                size="sm"
                 onClick={handleReExtract}
                 disabled={isReExtracting || !transcript.trim()}
-                className="pill px-3 py-1.5 bg-card-alt text-ink border border-border-subtle hover:border-accent disabled:opacity-50 transition cursor-pointer"
+                icon={<RefreshCw className={`w-4 h-4 ${isReExtracting ? 'animate-spin' : ''}`} />}
               >
-                <RefreshCw className={`w-4 h-4 ${isReExtracting ? 'animate-spin' : ''}`} />
-                <span>Trích xuất lại</span>
-              </button>
+                Trích xuất lại
+              </Button>
             </div>
             <textarea
               value={transcript}
@@ -775,14 +872,16 @@ export const CaptureRoute: React.FC<CaptureRouteProps> = ({
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <span className="label-micro">Vật tư ({extraction.materials.length})</span>
-                <button
+                <Button
+                  variant="secondary"
+                  size="sm"
                   onClick={() =>
                     setExtraction((p) => ({ ...p, materials: [...p.materials, { item: '', quantity: '', unit: '' }] }))
                   }
-                  className="pill px-2.5 py-1 bg-card-alt text-ink border border-border-subtle cursor-pointer"
+                  icon={<Plus className="w-4 h-4" />}
                 >
-                  <Plus className="w-4 h-4" /> Thêm
-                </button>
+                  Thêm
+                </Button>
               </div>
 
               {extraction.materials.length === 0 ? (
@@ -828,12 +927,14 @@ export const CaptureRoute: React.FC<CaptureRouteProps> = ({
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <span className="label-micro">Nhân công ({extraction.labor.length})</span>
-                <button
+                <Button
+                  variant="secondary"
+                  size="sm"
                   onClick={() => setExtraction((p) => ({ ...p, labor: [...p.labor, { role: '', count: 1, hours: '' }] }))}
-                  className="pill px-2.5 py-1 bg-card-alt text-ink border border-border-subtle cursor-pointer"
+                  icon={<Plus className="w-4 h-4" />}
                 >
-                  <Plus className="w-4 h-4" /> Thêm
-                </button>
+                  Thêm
+                </Button>
               </div>
 
               {extraction.labor.length === 0 ? (
@@ -875,6 +976,141 @@ export const CaptureRoute: React.FC<CaptureRouteProps> = ({
               )}
             </div>
 
+            {/* Content fields — collapsed by default; opens itself when the
+                AI already found something so it isn't missed on review. */}
+            <CollapsibleSection
+              title="Chậm trễ / Sự cố"
+              count={extraction.delays?.length || 0}
+              tone="danger"
+              defaultOpen={(extraction.delays?.length || 0) > 0}
+            >
+              <ArrayRowsEditor
+                items={extraction.delays || []}
+                fields={[
+                  { key: 'cause', placeholder: 'Nguyên nhân chậm trễ / sự cố', span: 4 },
+                  { key: 'duration', placeholder: 'Thời gian dừng', span: 2 }
+                ]}
+                emptyLabel="Không có chậm trễ hoặc sự cố nào."
+                onAdd={() => addArrayRow('delays', { cause: '', duration: '' })}
+                onUpdate={(idx, f, v) => updateArrayRow('delays', idx, f, v)}
+                onRemove={(idx) => removeArrayRow('delays', idx)}
+              />
+            </CollapsibleSection>
+
+            <CollapsibleSection
+              title="Vật tư nhận về"
+              count={extraction.deliveries?.length || 0}
+              defaultOpen={(extraction.deliveries?.length || 0) > 0}
+            >
+              <ArrayRowsEditor
+                items={extraction.deliveries || []}
+                fields={[
+                  { key: 'item', placeholder: 'Vật tư nhận về', span: 3 },
+                  { key: 'quantity', placeholder: 'Số lượng', span: 2 },
+                  { key: 'supplier', placeholder: 'Nhà cung cấp', span: 1 }
+                ]}
+                emptyLabel="Không có vật tư nào được giao trong ngày."
+                onAdd={() => addArrayRow('deliveries', { item: '', quantity: '', supplier: '' })}
+                onUpdate={(idx, f, v) => updateArrayRow('deliveries', idx, f, v)}
+                onRemove={(idx) => removeArrayRow('deliveries', idx)}
+              />
+            </CollapsibleSection>
+
+            <CollapsibleSection
+              title="Thiết bị / Máy móc"
+              count={extraction.equipment?.length || 0}
+              defaultOpen={(extraction.equipment?.length || 0) > 0}
+            >
+              <ArrayRowsEditor
+                items={extraction.equipment || []}
+                fields={[
+                  { key: 'name', placeholder: 'Tên thiết bị', span: 3 },
+                  { key: 'hours_used', placeholder: 'Giờ hoạt động', span: 2 },
+                  { key: 'idle_hours', placeholder: 'Giờ chờ', span: 1 }
+                ]}
+                emptyLabel="Không có thiết bị nào được ghi nhận."
+                onAdd={() => addArrayRow('equipment', { name: '', hours_used: '', idle_hours: '' })}
+                onUpdate={(idx, f, v) => updateArrayRow('equipment', idx, f, v)}
+                onRemove={(idx) => removeArrayRow('equipment', idx)}
+              />
+            </CollapsibleSection>
+
+            <CollapsibleSection
+              title="Khách đến công trình"
+              count={extraction.visitors?.length || 0}
+              defaultOpen={(extraction.visitors?.length || 0) > 0}
+            >
+              <ArrayRowsEditor
+                items={extraction.visitors || []}
+                fields={[
+                  { key: 'name', placeholder: 'Tên khách', span: 3 },
+                  { key: 'role', placeholder: 'Vai trò', span: 1 },
+                  { key: 'purpose', placeholder: 'Mục đích đến', span: 2 }
+                ]}
+                emptyLabel="Không có khách nào đến công trình."
+                onAdd={() => addArrayRow('visitors', { name: '', role: '', purpose: '' })}
+                onUpdate={(idx, f, v) => updateArrayRow('visitors', idx, f, v)}
+                onRemove={(idx) => removeArrayRow('visitors', idx)}
+              />
+            </CollapsibleSection>
+
+            <CollapsibleSection
+              title="An toàn lao động"
+              defaultOpen={Boolean(
+                extraction.safety?.toolbox_talk || extraction.safety?.observations || extraction.safety?.incidents
+              )}
+            >
+              <div className="space-y-2">
+                <div>
+                  <label className="block text-xs font-bold text-ink-soft mb-1">Họp an toàn đầu giờ</label>
+                  <textarea
+                    value={extraction.safety?.toolbox_talk || ''}
+                    onChange={(e) => updateSafety('toolbox_talk', e.target.value)}
+                    rows={2}
+                    className="field w-full px-2.5 py-2 text-sm resize-y"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-ink-soft mb-1">Quan sát an toàn</label>
+                  <textarea
+                    value={extraction.safety?.observations || ''}
+                    onChange={(e) => updateSafety('observations', e.target.value)}
+                    rows={2}
+                    className="field w-full px-2.5 py-2 text-sm resize-y"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-danger mb-1">Sự cố / tai nạn</label>
+                  <textarea
+                    value={extraction.safety?.incidents || ''}
+                    onChange={(e) => updateSafety('incidents', e.target.value)}
+                    rows={2}
+                    className="field w-full px-2.5 py-2 text-sm resize-y"
+                  />
+                </div>
+              </div>
+            </CollapsibleSection>
+
+            <CollapsibleSection
+              title="Khối lượng thi công (Kế hoạch / Thực tế)"
+              count={extraction.quantities?.length || 0}
+              defaultOpen={(extraction.quantities?.length || 0) > 0}
+            >
+              <ArrayRowsEditor
+                items={extraction.quantities || []}
+                fields={[
+                  { key: 'item', placeholder: 'Hạng mục', span: 3 },
+                  { key: 'planned', placeholder: 'Kế hoạch', span: 1 },
+                  { key: 'installed', placeholder: 'Thực tế', span: 1 },
+                  { key: 'unit', placeholder: 'ĐV', span: 1 }
+                ]}
+                emptyLabel="Không có khối lượng thi công nào được ghi nhận."
+                onAdd={() => addArrayRow('quantities', { item: '', planned: '', installed: '', unit: '' })}
+                onUpdate={(idx, f, v) => updateArrayRow('quantities', idx, f, v)}
+                onRemove={(idx) => removeArrayRow('quantities', idx)}
+              />
+            </CollapsibleSection>
+
             {/* Flag */}
             <button
               onClick={() => setExtraction((p) => ({ ...p, is_flagged: !p.is_flagged }))}
@@ -891,6 +1127,25 @@ export const CaptureRoute: React.FC<CaptureRouteProps> = ({
             </button>
             <p className="text-xs text-ink-soft -mt-2">
               Mục gắn cờ sẽ tự vào danh sách To-Do tuần và phần "Cần chú ý" của báo cáo ngày.
+            </p>
+          </div>
+
+          {/* Sign-off — a deliberate act, not just whoever happened to be
+              logged in. Only required when filing (locking); a draft can
+              still be handed off to someone else to review and sign later. */}
+          <div className="card p-4 space-y-2">
+            <label htmlFor="signoff" className="block text-sm font-bold text-ink">
+              Người ký xác nhận
+            </label>
+            <input
+              id="signoff"
+              value={signOffName}
+              onChange={(e) => setSignOffName(e.target.value)}
+              placeholder="Họ tên người xác nhận"
+              className="field w-full px-3 py-2.5 text-sm font-bold"
+            />
+            <p className="text-xs text-ink-soft">
+              Tên này được ghi lại cùng thời gian khi lưu kho, xác nhận nội dung nhật ký là đúng sự thật.
             </p>
           </div>
 
@@ -911,8 +1166,7 @@ export const CaptureRoute: React.FC<CaptureRouteProps> = ({
             </button>
 
             <p className="text-xs text-ink-soft text-center px-2">
-              Lưu kho sẽ khóa nhật ký lại: giữ nguyên nội dung, thời gian và người ghi. Chỉ chỉ huy trưởng hoặc quản trị
-              viên mở khóa được.
+              Lưu kho sẽ khóa nhật ký lại: giữ nguyên nội dung, thời gian và người ghi. Chỉ quản trị viên mở khóa được.
             </p>
           </div>
         </>

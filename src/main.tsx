@@ -2,6 +2,7 @@ import React, { Component, ErrorInfo, ReactNode } from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import { LanguageProvider } from './lib/i18n';
+import { Button } from './components/ui/Button';
 import './index.css';
 
 interface Props {
@@ -36,12 +37,9 @@ class ErrorBoundary extends Component<Props, State> {
             <p className="text-xs text-ink-soft">
               {this.state.error?.message || 'Có lỗi xảy ra trong quá trình khởi chạy giao diện.'}
             </p>
-            <button
-              onClick={() => window.location.reload()}
-              className="btn-primary px-4 py-2 text-xs"
-            >
+            <Button size="sm" onClick={() => window.location.reload()}>
               Tải lại trang
-            </button>
+            </Button>
           </div>
         </div>
       );

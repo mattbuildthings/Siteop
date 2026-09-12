@@ -22,15 +22,18 @@ export interface ExtractedData {
 export type EntryStatus = 'draft' | 'filed' | 'archived' | 'error';
 
 // Roles, strongest first. Kept in sync with siteop_role() in
-// supabase/migrations/20260909_projects_roles_and_entry_meta.sql.
-export type UserRole = 'admin' | 'superintendent' | 'foreman' | 'subcontractor' | 'viewer';
+// supabase/migrations/20260911_simplify_roles.sql.
+//   admin — manage projects, manage roles, see everything, unlock/delete any
+//           entry, export/sync. Every new signup starts here.
+//   user  — create + edit own entries, file/lock own entries, see projects
+//           they belong to. Cannot manage projects, users, or others' entries.
+//   guest — read-only on projects they belong to.
+export type UserRole = 'admin' | 'user' | 'guest';
 
 export const ROLE_LABELS: Record<UserRole, string> = {
   admin: 'Quản trị',
-  superintendent: 'Chỉ huy trưởng',
-  foreman: 'Đội trưởng',
-  subcontractor: 'Nhà thầu phụ',
-  viewer: 'Chỉ xem'
+  user: 'Người dùng',
+  guest: 'Khách (chỉ xem)'
 };
 
 export interface UserProfile {

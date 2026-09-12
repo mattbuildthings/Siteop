@@ -107,7 +107,7 @@ export const SyncRoute: React.FC<SyncRouteProps> = ({ entries, profile, onRefres
           <ShieldCheck className="w-10 h-10 text-warning mx-auto" />
           <h2 className="text-base font-bold text-ink">Chỉ dành cho quản lý</h2>
           <p className="text-sm text-ink-soft">
-            Xuất dữ liệu ra Google Drive chỉ dành cho chỉ huy trưởng và quản trị viên.
+            Xuất dữ liệu ra Google Drive chỉ dành cho quản trị viên.
           </p>
         </div>
       </div>

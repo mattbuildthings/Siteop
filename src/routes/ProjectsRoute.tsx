@@ -237,7 +237,7 @@ export const ProjectsRoute: React.FC<ProjectsRouteProps> = ({
           <p className="text-sm text-ink-soft">
             {manager
               ? 'Tạo công trình đầu tiên. Mỗi nhật ký, báo cáo ngày và số hiệu đều gắn với một công trình.'
-              : 'Bạn chưa được thêm vào công trình nào. Liên hệ chỉ huy trưởng để được cấp quyền.'}
+              : 'Bạn chưa được thêm vào công trình nào. Liên hệ quản trị viên để được cấp quyền.'}
           </p>
           {manager && (
             <button onClick={openCreate} className="btn-block">
@@ -361,8 +361,8 @@ export const ProjectsRoute: React.FC<ProjectsRouteProps> = ({
                 </div>
               ))}
               <p className="text-xs text-ink-soft">
-                Chỉ xem = không ghi được nhật ký. Đội trưởng ghi nhật ký trên công trình được phân công. Chỉ huy trưởng
-                và quản trị xem được mọi công trình và mở khóa được nhật ký đã lưu kho.
+                Khách chỉ xem, không ghi được nhật ký. Người dùng ghi nhật ký trên công trình được phân công. Quản trị
+                xem được mọi công trình, quản lý công trình/nhân sự, và mở khóa được nhật ký đã lưu kho.
               </p>
             </div>
           )}

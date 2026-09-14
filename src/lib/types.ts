@@ -13,6 +13,41 @@ export interface ExtractedData {
     hours?: string;
     note?: string;
   }>;
+  // Daily-log content fields. All optional and all extracted from the same
+  // voice note the rest of the entry comes from -- nobody types these by hand.
+  delays?: Array<{
+    cause: string;
+    duration?: string;
+    note?: string;
+  }>;
+  deliveries?: Array<{
+    item: string;
+    quantity?: string;
+    supplier?: string;
+    note?: string;
+  }>;
+  equipment?: Array<{
+    name: string;
+    hours_used?: string;
+    idle_hours?: string;
+    note?: string;
+  }>;
+  visitors?: Array<{
+    name: string;
+    role?: string;
+    purpose?: string;
+  }>;
+  safety?: {
+    toolbox_talk?: string;
+    observations?: string;
+    incidents?: string;
+  };
+  quantities?: Array<{
+    item: string;
+    planned?: string;
+    installed?: string;
+    unit?: string;
+  }>;
   confidence_score?: number; // 0.0 - 1.0 — model self-report, not shown in the UI
   summary_vi?: string;
   summary_bullet?: string;
@@ -22,15 +57,18 @@ export interface ExtractedData {
 export type EntryStatus = 'draft' | 'filed' | 'archived' | 'error';
 
 // Roles, strongest first. Kept in sync with siteop_role() in
-// supabase/migrations/20260909_projects_roles_and_entry_meta.sql.
-export type UserRole = 'admin' | 'superintendent' | 'foreman' | 'subcontractor' | 'viewer';
+// supabase/migrations/20260911_simplify_roles.sql.
+//   admin — manage projects, manage roles, see everything, unlock/delete any
+//           entry, export/sync. Every new signup starts here.
+//   user  — create + edit own entries, file/lock own entries, see projects
+//           they belong to. Cannot manage projects, users, or others' entries.
+//   guest — read-only on projects they belong to.
+export type UserRole = 'admin' | 'user' | 'guest';
 
 export const ROLE_LABELS: Record<UserRole, string> = {
   admin: 'Quản trị',
-  superintendent: 'Chỉ huy trưởng',
-  foreman: 'Đội trưởng',
-  subcontractor: 'Nhà thầu phụ',
-  viewer: 'Chỉ xem'
+  user: 'Người dùng',
+  guest: 'Khách (chỉ xem)'
 };
 
 export interface UserProfile {
@@ -82,6 +120,13 @@ export interface EntryMeta {
   locked_by?: string | null;
   reviewed_at?: string | null;
   reviewed_by?: string | null;
+  // Sign-off: a typed name confirming the log is accurate, captured at file
+  // time. Separate from locked_by/locked_at -- locking is a system event,
+  // signing is a deliberate human act, and the two can differ (a manager
+  // could file on someone else's behalf).
+  signed_off_by?: string | null;
+  signed_off_name?: string | null;
+  signed_off_at?: string | null;
   created_at?: string;
 }
 
@@ -143,16 +188,23 @@ export interface DailyDigest {
   project_id?: string | null;
 }
 
+export type TodoPriority = 'low' | 'normal' | 'high';
+
 export interface TodoItem {
   id: string;
   entry_id?: string | null;
   job_number?: string | null;
-  week_start: string; // YYYY-MM-DD, Monday of the ISO week
+  week_start: string; // YYYY-MM-DD, Monday of the ISO week it was first flagged in
   text: string;
   due_date?: string | null;
   sort_order: number;
   is_done: boolean;
   dismissed: boolean;
+  // Issues upgrade: who it's on, and how urgent. Optional on the type since a
+  // pre-migration row (or an environment that hasn't applied 20260910 yet)
+  // simply won't have these keys -- callers fall back with `?? 'normal'` etc.
+  assignee_id?: string | null;
+  priority?: TodoPriority;
   created_at: string;
 }
 
@@ -165,19 +217,6 @@ export interface SyncLog {
   error_message?: string | null;
 }
 
-export interface OfflineEntry {
-  id: string;
-  createdAt: string;
-  voiceBlobBase64?: string;
-  /** Multiple photos per entry — index 0 becomes the cover photo. */
-  photoBlobsBase64?: string[];
-  audioMimeType?: string;
-  photoMimeType?: string;
-  retryCount: number;
-  jobNumber?: string;
-  projectId?: string | null;
-  workDate?: string | null;
-  weather?: Weather | null;
-  transcription?: string | null;
-  extractedData?: ExtractedData | null;
-}
+// The offline queue's own item type (OfflineQueueItem) lives in lib/offlineDb.ts,
+// next to the IndexedDB code that owns it, since it holds browser Blob values
+// rather than the plain DTO shapes the rest of this file mirrors from Postgres.

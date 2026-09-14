@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Search,
   Calendar,
@@ -18,14 +18,22 @@ import {
   User as UserIcon,
   CloudSun,
   MapPin,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Truck,
+  Wrench,
+  Users,
+  ShieldAlert,
+  Ruler
 } from 'lucide-react';
 import { DiaryEntry, EntryFlag, Project, UserProfile } from '../lib/types';
 import { supabase } from '../lib/supabase';
 import { matchVietnameseSearch } from '../lib/vietnamese';
 import { Toast } from '../components/Toast';
+import { Badge } from '../components/ui/Badge';
+import { Button } from '../components/ui/Button';
 import { processAudioWithGemini } from '../lib/geminiFallback';
-import { blobToBase64, removeFromOfflineQueue } from '../lib/offlineStore';
+import { blobToBase64 } from '../lib/offlineStore';
+import { removeFromOfflineQueue } from '../lib/offlineDb';
 import { canDeleteEntry, canUnlockEntry, displayName, isEntryLocked, isManager } from '../lib/session';
 import { formatWeather } from '../lib/weather';
 
@@ -38,6 +46,9 @@ interface DiaryRouteProps {
   activeProject: Project | null;
   onRefresh: () => void;
   onNavigateToSync: () => void;
+  /** Set when the to-do list's "view source entry" action fires; opens that entry's detail sheet once. */
+  openEntryId?: string | null;
+  onOpenEntryHandled?: () => void;
 }
 
 export const DiaryRoute: React.FC<DiaryRouteProps> = ({
@@ -48,7 +59,9 @@ export const DiaryRoute: React.FC<DiaryRouteProps> = ({
   projects,
   activeProject,
   onRefresh,
-  onNavigateToSync
+  onNavigateToSync,
+  openEntryId,
+  onOpenEntryHandled
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -63,6 +76,10 @@ export const DiaryRoute: React.FC<DiaryRouteProps> = ({
   const [isDeleting, setIsDeleting] = useState(false);
   const [retryingEntryId, setRetryingEntryId] = useState<string | null>(null);
   const [lightbox, setLightbox] = useState<string | null>(null);
+
+  // File/lock sign-off dialog
+  const [fileTarget, setFileTarget] = useState<DiaryEntry | null>(null);
+  const [signOffName, setSignOffName] = useState('');
 
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info'; open: boolean }>({
     message: '',
@@ -146,12 +163,27 @@ export const DiaryRoute: React.FC<DiaryRouteProps> = ({
     return groups;
   }, [filteredEntries]);
 
+  // Jump-to-entry from the weekly to-do list. Runs once entries has loaded
+  // the target; if the id never shows up (still fetching, or stale) this is
+  // simply a no-op rather than an error.
+  useEffect(() => {
+    if (!openEntryId) return;
+    const found = entries.find((e) => e.id === openEntryId);
+    if (found) {
+      setActiveEntry(found);
+      onOpenEntryHandled?.();
+    }
+  }, [openEntryId, entries, onOpenEntryHandled]);
+
   // --- File / lock ---------------------------------------------------------
   // Filing is what turns a note into a record: content, time and author are
   // frozen from here on. The database enforces this with a trigger, so this
-  // button is the affordance, not the security boundary.
-  const fileEntry = async (entry: DiaryEntry, e: React.MouseEvent) => {
-    e.stopPropagation();
+  // button is the affordance, not the security boundary. signOff is a typed
+  // name captured in the dialog below -- a deliberate confirmation act, kept
+  // separate from locked_by/locked_at which are just the system's own log of
+  // who clicked the button and when.
+  const fileEntry = async (entry: DiaryEntry, signOff: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
     if (isEntryLocked(entry)) return;
 
     const now = new Date().toISOString();
@@ -162,16 +194,22 @@ export const DiaryRoute: React.FC<DiaryRouteProps> = ({
       const { error } = await supabase.from('diary_entries').update({ status: 'filed' }).eq('id', entry.id);
       if (error) throw error;
 
-      const { error: metaErr } = await supabase
-        .from('entry_meta')
-        .upsert(
-          { entry_id: entry.id, locked_at: now, locked_by: userId ?? null },
-          { onConflict: 'entry_id' }
-        );
+      const { error: metaErr } = await supabase.from('entry_meta').upsert(
+        {
+          entry_id: entry.id,
+          locked_at: now,
+          locked_by: userId ?? null,
+          signed_off_by: userId ?? null,
+          signed_off_name: signOff,
+          signed_off_at: now
+        },
+        { onConflict: 'entry_id' }
+      );
       if (metaErr) throw metaErr;
 
       showToast('Đã lưu kho & khóa nhật ký. Bản ghi này không sửa được nữa.', 'success');
       setActiveEntry(null);
+      setFileTarget(null);
       onRefresh();
     } catch (err: any) {
       showToast('Lỗi khi lưu kho: ' + (err.message || 'Thử lại'), 'error');
@@ -181,7 +219,7 @@ export const DiaryRoute: React.FC<DiaryRouteProps> = ({
   const unlockEntry = async (entry: DiaryEntry, e: React.MouseEvent) => {
     e.stopPropagation();
     try {
-      // The trigger rejects this for anyone below superintendent and writes an
+      // The trigger rejects this for anyone who isn't an admin and writes an
       // entry_revisions row so the unlock itself is on the record.
       const { error: metaErr } = await supabase
         .from('entry_meta')
@@ -278,7 +316,7 @@ export const DiaryRoute: React.FC<DiaryRouteProps> = ({
       const { error } = await supabase.from('diary_entries').delete().eq('id', entryToDelete.id);
       if (error) throw error;
 
-      if (entryToDelete.id.startsWith('offline_')) removeFromOfflineQueue(entryToDelete.id);
+      if (entryToDelete.id.startsWith('offline_')) await removeFromOfflineQueue(entryToDelete.id);
       if (activeEntry?.id === entryToDelete.id) setActiveEntry(null);
 
       showToast('Đã xóa nhật ký', 'success');
@@ -331,13 +369,9 @@ export const DiaryRoute: React.FC<DiaryRouteProps> = ({
         </div>
 
         {isManager(profile) && (
-          <button
-            onClick={onNavigateToSync}
-            className="pill px-3 py-2 bg-card text-ink border border-border-subtle hover:border-accent transition cursor-pointer shrink-0"
-          >
-            <Download className="w-4 h-4" />
-            <span>Xuất</span>
-          </button>
+          <Button variant="secondary" size="sm" onClick={onNavigateToSync} icon={<Download className="w-4 h-4" />} className="shrink-0">
+            Xuất
+          </Button>
         )}
       </div>
 
@@ -526,23 +560,24 @@ export const DiaryRoute: React.FC<DiaryRouteProps> = ({
 
                       <div className="flex items-center gap-1.5 shrink-0">
                         {isFlagged && (
-                          <span className="pill px-2 py-0.5 bg-warning/12 text-warning border border-warning/50">
+                          <Badge tone="warning" className="gap-1 !h-auto !px-2 !py-0.5 !normal-case !tracking-normal">
                             <Flag className="w-3.5 h-3.5 fill-current" />
                             <span className="hidden xs:inline">Chú ý</span>
-                          </span>
+                          </Badge>
                         )}
 
                         {locked ? (
-                          <span
-                            className="pill px-2.5 py-1 bg-accent/12 text-accent border border-accent/40"
+                          <Badge
+                            tone="primary"
+                            className="gap-1 !h-auto !px-2.5 !py-1 !normal-case !tracking-normal"
                             title={`Đã khóa lúc ${new Date(meta!.locked_at!).toLocaleString('vi-VN')}`}
                           >
                             <Lock className="w-3.5 h-3.5" /> Đã khóa
-                          </span>
+                          </Badge>
                         ) : (
-                          <span className="pill px-2.5 py-1 bg-warning/12 text-warning border border-warning/40">
+                          <Badge tone="warning" className="gap-1 !h-auto !px-2.5 !py-1 !normal-case !tracking-normal">
                             <Clock className="w-3.5 h-3.5" /> Nháp
-                          </span>
+                          </Badge>
                         )}
                       </div>
                     </div>
@@ -571,30 +606,27 @@ export const DiaryRoute: React.FC<DiaryRouteProps> = ({
                         <p className="text-sm text-ink line-clamp-2 leading-relaxed">{snippet}</p>
 
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="pill px-2 py-0.5 bg-card-alt border border-border text-ink">
+                          <Badge tone="neutral" className="!h-auto !px-2 !py-0.5 !normal-case !tracking-normal">
                             {category}
-                          </span>
+                          </Badge>
 
                           {project && !scopeToActiveProject && (
-                            <span className="pill px-2 py-0.5 bg-info/12 text-info border border-info/40">
+                            <Badge tone="info" className="gap-1 !h-auto !px-2 !py-0.5 !normal-case !tracking-normal">
                               <MapPin className="w-3 h-3" />
                               {project.code || project.name}
-                            </span>
+                            </Badge>
                           )}
 
                           {needsRetry && (
-                            <button
+                            <Button
+                              variant="danger"
+                              size="sm"
                               onClick={(e) => retryTranscription(entry, e)}
                               disabled={retryingEntryId !== null}
-                              className="pill px-2 py-1 bg-danger/12 text-danger border border-danger/40 disabled:opacity-50 transition"
+                              icon={isRetrying ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <AlertCircle className="w-3.5 h-3.5" />}
                             >
-                              {isRetrying ? (
-                                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                              ) : (
-                                <AlertCircle className="w-3.5 h-3.5" />
-                              )}
                               {isRetrying ? 'Đang thử lại...' : 'Chưa có văn bản'}
-                            </button>
+                            </Button>
                           )}
                         </div>
 
@@ -649,9 +681,9 @@ export const DiaryRoute: React.FC<DiaryRouteProps> = ({
                         </span>
                       )}
                       {locked && (
-                        <span className="pill px-2 py-0.5 bg-accent/12 text-accent border border-accent/40">
+                        <Badge tone="primary" className="gap-1 !h-auto !px-2 !py-0.5 !normal-case !tracking-normal">
                           <Lock className="w-3.5 h-3.5" /> Đã khóa
-                        </span>
+                        </Badge>
                       )}
                     </div>
                     <p className="text-sm text-ink-soft mt-1">
@@ -701,6 +733,15 @@ export const DiaryRoute: React.FC<DiaryRouteProps> = ({
                       <span>Lưu kho lúc {new Date(meta.locked_at).toLocaleString('vi-VN')}</span>
                     </div>
                   )}
+                  {meta?.signed_off_name && (
+                    <div className="flex items-center gap-2 text-accent">
+                      <CheckCircle className="w-4 h-4 shrink-0" />
+                      <span>
+                        Ký xác nhận: {meta.signed_off_name}
+                        {meta.signed_off_at ? ` · ${new Date(meta.signed_off_at).toLocaleString('vi-VN')}` : ''}
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Photo gallery */}
@@ -741,16 +782,15 @@ export const DiaryRoute: React.FC<DiaryRouteProps> = ({
                   <div className="flex items-center justify-between gap-2">
                     <span className="label-micro">Văn bản ghi chép</span>
                     {activeEntry.voice_url && !activeEntry.transcription && (
-                      <button
+                      <Button
+                        variant="danger"
+                        size="sm"
                         onClick={(e) => retryTranscription(activeEntry, e)}
                         disabled={retryingEntryId !== null}
-                        className="pill px-3 py-1.5 bg-danger/12 text-danger border border-danger/40 disabled:opacity-50 transition cursor-pointer"
+                        icon={<RefreshCw className={`w-4 h-4 ${retryingEntryId === activeEntry.id ? 'animate-spin' : ''}`} />}
                       >
-                        <RefreshCw
-                          className={`w-4 h-4 ${retryingEntryId === activeEntry.id ? 'animate-spin' : ''}`}
-                        />
                         {retryingEntryId === activeEntry.id ? 'Đang thử lại...' : 'Thử lại'}
-                      </button>
+                      </Button>
                     )}
                   </div>
                   <p className="p-3 rounded-[14px] bg-surface border border-border text-sm text-ink leading-relaxed whitespace-pre-wrap">
@@ -762,9 +802,9 @@ export const DiaryRoute: React.FC<DiaryRouteProps> = ({
                   <div className="space-y-3 p-4 rounded-[14px] bg-surface border border-border">
                     <div className="flex items-center justify-between text-sm font-bold">
                       <span className="text-ink">Hạng mục</span>
-                      <span className="pill px-2.5 py-0.5 bg-card-alt border border-border text-ink">
+                      <Badge tone="neutral" className="!h-auto !px-2.5 !py-0.5 !normal-case !tracking-normal">
                         {activeEntry.extracted_data.category}
-                      </span>
+                      </Badge>
                     </div>
 
                     {(activeEntry.extracted_data.materials?.length || 0) > 0 && (
@@ -794,6 +834,111 @@ export const DiaryRoute: React.FC<DiaryRouteProps> = ({
                       </div>
                     )}
 
+                    {(activeEntry.extracted_data.delays?.length || 0) > 0 && (
+                      <div className="text-sm space-y-1">
+                        <span className="font-bold text-danger flex items-center gap-1.5">
+                          <AlertCircle className="w-3.5 h-3.5" /> Chậm trễ / Sự cố:
+                        </span>
+                        <ul className="list-disc pl-5 space-y-0.5 text-ink">
+                          {activeEntry.extracted_data.delays!.map((d, idx) => (
+                            <li key={idx}>
+                              {d.cause}
+                              {d.duration ? ` — ${d.duration}` : ''}
+                              {d.note ? ` (${d.note})` : ''}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {(activeEntry.extracted_data.deliveries?.length || 0) > 0 && (
+                      <div className="text-sm space-y-1">
+                        <span className="font-bold text-ink flex items-center gap-1.5">
+                          <Truck className="w-3.5 h-3.5" /> Vật tư nhận về:
+                        </span>
+                        <ul className="list-disc pl-5 space-y-0.5 text-ink">
+                          {activeEntry.extracted_data.deliveries!.map((d, idx) => (
+                            <li key={idx}>
+                              {d.item}: {d.quantity} {d.supplier ? `— ${d.supplier}` : ''}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {(activeEntry.extracted_data.equipment?.length || 0) > 0 && (
+                      <div className="text-sm space-y-1">
+                        <span className="font-bold text-ink flex items-center gap-1.5">
+                          <Wrench className="w-3.5 h-3.5" /> Thiết bị / Máy móc:
+                        </span>
+                        <ul className="list-disc pl-5 space-y-0.5 text-ink">
+                          {activeEntry.extracted_data.equipment!.map((eq, idx) => (
+                            <li key={idx}>
+                              {eq.name}
+                              {eq.hours_used ? ` — hoạt động ${eq.hours_used}` : ''}
+                              {eq.idle_hours ? `, chờ ${eq.idle_hours}` : ''}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {(activeEntry.extracted_data.visitors?.length || 0) > 0 && (
+                      <div className="text-sm space-y-1">
+                        <span className="font-bold text-ink flex items-center gap-1.5">
+                          <Users className="w-3.5 h-3.5" /> Khách đến công trình:
+                        </span>
+                        <ul className="list-disc pl-5 space-y-0.5 text-ink">
+                          {activeEntry.extracted_data.visitors!.map((v, idx) => (
+                            <li key={idx}>
+                              {v.name}
+                              {v.role ? ` (${v.role})` : ''}
+                              {v.purpose ? ` — ${v.purpose}` : ''}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {activeEntry.extracted_data.safety &&
+                      (activeEntry.extracted_data.safety.toolbox_talk ||
+                        activeEntry.extracted_data.safety.observations ||
+                        activeEntry.extracted_data.safety.incidents) && (
+                        <div className="text-sm space-y-1">
+                          <span className="font-bold text-ink flex items-center gap-1.5">
+                            <ShieldAlert className="w-3.5 h-3.5" /> An toàn:
+                          </span>
+                          <ul className="list-disc pl-5 space-y-0.5 text-ink">
+                            {activeEntry.extracted_data.safety.toolbox_talk && (
+                              <li>Họp đầu giờ: {activeEntry.extracted_data.safety.toolbox_talk}</li>
+                            )}
+                            {activeEntry.extracted_data.safety.observations && (
+                              <li>Quan sát: {activeEntry.extracted_data.safety.observations}</li>
+                            )}
+                            {activeEntry.extracted_data.safety.incidents && (
+                              <li className="text-danger">
+                                Sự cố: {activeEntry.extracted_data.safety.incidents}
+                              </li>
+                            )}
+                          </ul>
+                        </div>
+                      )}
+
+                    {(activeEntry.extracted_data.quantities?.length || 0) > 0 && (
+                      <div className="text-sm space-y-1">
+                        <span className="font-bold text-info flex items-center gap-1.5">
+                          <Ruler className="w-3.5 h-3.5" /> Khối lượng (Kế hoạch / Thực tế):
+                        </span>
+                        <ul className="list-disc pl-5 space-y-0.5 text-ink">
+                          {activeEntry.extracted_data.quantities!.map((q, idx) => (
+                            <li key={idx}>
+                              {q.item}: {q.installed || '—'} / {q.planned || '—'} {q.unit}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
                     {meta?.reviewed_at && (
                       <p className="text-xs text-ink-soft flex items-center gap-1.5 pt-1 border-t border-border">
                         <CheckCircle className="w-3.5 h-3.5 text-accent shrink-0" />
@@ -806,7 +951,13 @@ export const DiaryRoute: React.FC<DiaryRouteProps> = ({
                 {/* Actions */}
                 <div className="pt-2 border-t border-border space-y-2">
                   {!locked && (
-                    <button onClick={(e) => fileEntry(activeEntry, e)} className="btn-block">
+                    <button
+                      onClick={() => {
+                        setSignOffName((prev) => prev || displayName(profile));
+                        setFileTarget(activeEntry);
+                      }}
+                      className="btn-block"
+                    >
                       <Lock className="w-5 h-5" />
                       <span>Lưu kho &amp; khóa nhật ký</span>
                     </button>
@@ -835,7 +986,7 @@ export const DiaryRoute: React.FC<DiaryRouteProps> = ({
 
                   {locked && !canUnlockEntry(profile) && (
                     <p className="text-xs text-ink-soft text-center">
-                      Nhật ký đã lưu kho là bản ghi chính thức — chỉ chỉ huy trưởng hoặc quản trị viên mới sửa được.
+                      Nhật ký đã lưu kho là bản ghi chính thức — chỉ quản trị viên mới sửa được.
                     </p>
                   )}
                 </div>
@@ -843,6 +994,53 @@ export const DiaryRoute: React.FC<DiaryRouteProps> = ({
             </div>
           );
         })()}
+
+      {/* Sign-off dialog — required to file/lock an entry */}
+      {fileTarget && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4 scrim animate-fade-in"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="signoff-dialog-title"
+        >
+          <div className="w-full max-w-sm bg-card border border-border rounded-[20px] p-5 space-y-4 shadow-2xl">
+            <div className="space-y-1">
+              <h3 id="signoff-dialog-title" className="text-base font-bold text-ink">
+                Xác nhận &amp; Lưu kho
+              </h3>
+              <p className="text-sm text-ink-soft">
+                Ký xác nhận nội dung nhật ký đúng sự thật trước khi khóa lại. Sau khi lưu kho, chỉ quản trị viên mới mở khóa được.
+              </p>
+            </div>
+            <div>
+              <label htmlFor="diary-signoff" className="block text-sm font-bold text-ink mb-1">
+                Người ký xác nhận
+              </label>
+              <input
+                id="diary-signoff"
+                value={signOffName}
+                onChange={(e) => setSignOffName(e.target.value)}
+                className="field w-full px-3 py-2.5 text-sm font-bold"
+              />
+            </div>
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
+              <Button variant="secondary" onClick={() => setFileTarget(null)}>
+                Hủy
+              </Button>
+              <Button
+                onClick={(e) => {
+                  if (!signOffName.trim()) return;
+                  fileEntry(fileTarget, signOffName.trim(), e);
+                }}
+                disabled={!signOffName.trim()}
+                icon={<Lock className="w-4 h-4" />}
+              >
+                Lưu kho &amp; khóa
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Photo lightbox */}
       {lightbox && (
@@ -890,23 +1088,17 @@ export const DiaryRoute: React.FC<DiaryRouteProps> = ({
             </div>
 
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
-              <button
-                type="button"
-                onClick={() => setEntryToDelete(null)}
-                disabled={isDeleting}
-                className="pill px-4 py-2.5 bg-card-alt text-ink border border-border-subtle hover:border-border-strong transition cursor-pointer"
-              >
+              <Button variant="secondary" onClick={() => setEntryToDelete(null)} disabled={isDeleting}>
                 Hủy
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
+                variant="danger"
                 onClick={handleConfirmDelete}
                 disabled={isDeleting}
-                className="pill px-4 py-2.5 bg-danger text-white border border-danger font-bold hover:opacity-90 active:scale-95 transition flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                icon={isDeleting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
               >
-                {isDeleting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
                 {isDeleting ? 'Đang xóa...' : 'Xóa'}
-              </button>
+              </Button>
             </div>
           </div>
         </div>

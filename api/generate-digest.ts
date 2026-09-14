@@ -112,6 +112,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
       }
 
+      // Delays and safety incidents are exactly what "Cần Chú Ý" exists to
+      // surface, whether or not the trigger-word flag happened to fire on
+      // this entry -- so they're included regardless of isFlagged.
+      const delays = e.extracted_data?.delays || [];
+      if (delays.length > 0) {
+        const delayLines = delays
+          .map((d: any) => `${d.cause}${d.duration ? ` (${d.duration})` : ''}`)
+          .join('; ');
+        promptContent += `- ⚠️ Chậm trễ/sự cố: ${delayLines}\n`;
+      }
+
+      const incidents = e.extracted_data?.safety?.incidents;
+      if (incidents) {
+        promptContent += `- ⚠️ Sự cố an toàn: ${incidents}\n`;
+      }
+
       promptContent += `\n`;
     });
 

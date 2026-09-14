@@ -75,6 +75,15 @@
   --color-accent-ink: #ffffff;
   --color-accent-soft: rgba(31, 75, 74, 0.12);
 
+  /* Singular-emphasis CTA — the source system's "accent" (orange), held
+     back for the one most important action on a screen, distinct from
+     the broader teal --color-accent above. gray-900 text: 5.1:1 on cta,
+     7.8:1 on cta-hover. */
+  --color-cta: #e8632b;           /* orange-600 */
+  --color-cta-hover: #f0793f;     /* orange-500 */
+  --color-cta-active: #b94e1f;    /* orange-700 */
+  --color-cta-ink: #1c1c1a;       /* gray-900 */
+
   /* Semantic */
   --color-positive: #3f7d45;      /* success · 5.0:1 on card */
   --color-warning: #b94e1f;       /* orange-700, darkest of the accent ramp so it clears 4.5:1 as text · 5.0:1 */
@@ -127,6 +136,14 @@
   --color-accent-active: #e8632b;/* orange-600 */
   --color-accent-ink: #122726;   /* teal-900 -- dark text on the light-orange chip */
   --color-accent-soft: rgba(245, 152, 95, 0.12);
+
+  /* In dark mode --color-accent is already the orange CTA hue (teal has
+     no contrast left to give against a teal surface), so cta reuses it
+     rather than inventing a second orange slot. */
+  --color-cta: #f5985f;
+  --color-cta-hover: #f0793f;
+  --color-cta-active: #e8632b;
+  --color-cta-ink: #122726;
 
   --color-positive: #8fcb92;     /* lightened success · 7.0:1 on card */
   --color-warning: #f5985f;      /* orange-400 · 7.8:1 on card */

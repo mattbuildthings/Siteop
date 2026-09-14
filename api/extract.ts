@@ -65,6 +65,9 @@ Hãy phân tích đoạn nhật ký công trình sau và trích xuất dữ li�
 VĂN BẢN:
 "${transcription}"
 
+CHỈ điền các mục dưới đây (delays, deliveries, equipment, visitors, safety, quantities)
+nếu văn bản có nhắc tới -- để mảng rỗng [] hoặc bỏ trống nếu không có, đừng suy diễn.
+
 YÊU CẦU TRẢ VỀ JSON THUẦN TÚY (không kèm markdown):
 {
   "category": "Ép cọc / Bê tông / Thợ nề / Xây tô / Điện nước / Vật tư / Khác",
@@ -74,16 +77,42 @@ YÊU CẦU TRẢ VỀ JSON THUẦN TÚY (không kèm markdown):
   "labor": [
     { "role": "Vị trí thợ", "count": 1, "hours": "Thời gian", "note": "Ghi chú" }
   ],
+  "delays": [
+    { "cause": "Nguyên nhân chậm trễ / sự cố", "duration": "Thời gian dừng việc", "note": "Ghi chú" }
+  ],
+  "deliveries": [
+    { "item": "Vật tư nhận về", "quantity": "Số lượng", "supplier": "Nhà cung cấp", "note": "Ghi chú" }
+  ],
+  "equipment": [
+    { "name": "Tên thiết bị / máy móc", "hours_used": "Giờ hoạt động", "idle_hours": "Giờ chờ/ngừng", "note": "Ghi chú" }
+  ],
+  "visitors": [
+    { "name": "Tên khách", "role": "Vai trò (chủ đầu tư/tư vấn giám sát/thanh tra...)", "purpose": "Mục đích đến" }
+  ],
+  "safety": {
+    "toolbox_talk": "Nội dung họp an toàn đầu giờ nếu có",
+    "observations": "Quan sát về an toàn lao động",
+    "incidents": "Sự cố / tai nạn an toàn nếu có"
+  },
+  "quantities": [
+    { "item": "Hạng mục", "planned": "Khối lượng kế hoạch", "installed": "Khối lượng đã thi công", "unit": "Đơn vị" }
+  ],
   "summary_bullet": "Tóm tắt 1 câu ngắn gọn về nhật ký",
   "is_flagged": false
 }`;
 
     const result = await model.generateContent(prompt);
     const responseText = result.response.text();
-    let extractedData = {
+    let extractedData: Record<string, any> = {
       category: 'Khác',
       materials: [],
       labor: [],
+      delays: [],
+      deliveries: [],
+      equipment: [],
+      visitors: [],
+      safety: {},
+      quantities: [],
       summary_bullet: transcription.substring(0, 80),
       is_flagged: false
     };

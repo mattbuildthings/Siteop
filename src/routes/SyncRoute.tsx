@@ -3,6 +3,8 @@ import { RefreshCw, CheckCircle2, XCircle, FolderCheck, HardDrive, ShieldCheck, 
 import { DiaryEntry, SyncLog, UserProfile } from '../lib/types';
 import { supabase } from '../lib/supabase';
 import { Toast } from '../components/Toast';
+import { Badge } from '../components/ui/Badge';
+import { Button } from '../components/ui/Button';
 import { getAccessToken, isManager } from '../lib/session';
 
 interface SyncRouteProps {
@@ -107,7 +109,7 @@ export const SyncRoute: React.FC<SyncRouteProps> = ({ entries, profile, onRefres
           <ShieldCheck className="w-10 h-10 text-warning mx-auto" />
           <h2 className="text-base font-bold text-ink">Chỉ dành cho quản lý</h2>
           <p className="text-sm text-ink-soft">
-            Xuất dữ liệu ra Google Drive chỉ dành cho chỉ huy trưởng và quản trị viên.
+            Xuất dữ liệu ra Google Drive chỉ dành cho quản trị viên.
           </p>
         </div>
       </div>
@@ -130,9 +132,9 @@ export const SyncRoute: React.FC<SyncRouteProps> = ({ entries, profile, onRefres
           <p className="text-xs text-ink-soft">Đồng bộ Google Drive Markdown Vault (Matt Admin)</p>
         </div>
 
-        <div className="pill px-2.5 py-1 bg-warning/15 text-warning border border-warning/30">
+        <Badge tone="warning" className="gap-1 !h-auto !px-2.5 !py-1 !normal-case !tracking-normal">
           <ShieldCheck className="w-3.5 h-3.5" /> Admin Only
-        </div>
+        </Badge>
       </div>
 
       {/* Sync Card Action */}
@@ -148,23 +150,15 @@ export const SyncRoute: React.FC<SyncRouteProps> = ({ entries, profile, onRefres
           </p>
         </div>
 
-        <button
+        <Button
+          size="lg"
           onClick={handleManualSync}
           disabled={isSyncing}
-          className="w-full py-3.5 rounded-card bg-accent hover:bg-accent-hover text-accent-ink font-bold text-sm tracking-wide active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer"
+          className="w-full"
+          icon={isSyncing ? <RefreshCw className="w-5 h-5 animate-spin" /> : <FolderCheck className="w-5 h-5" />}
         >
-          {isSyncing ? (
-            <>
-              <RefreshCw className="w-5 h-5 animate-spin text-accent-ink" />
-              <span>Đang Xuất Google Drive...</span>
-            </>
-          ) : (
-            <>
-              <FolderCheck className="w-5 h-5" />
-              <span>Kích Hoạt Sync Now</span>
-            </>
-          )}
-        </button>
+          {isSyncing ? 'Đang Xuất Google Drive...' : 'Kích Hoạt Sync Now'}
+        </Button>
       </div>
 
       {/* Sync Logs Table / History */}

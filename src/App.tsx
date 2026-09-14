@@ -8,7 +8,8 @@ import { SyncRoute } from './routes/SyncRoute';
 import { ProjectsRoute } from './routes/ProjectsRoute';
 import { DiaryEntry, Project, UserProfile } from './lib/types';
 import { supabase } from './lib/supabase';
-import { getOfflineQueue, processOfflineQueue } from './lib/offlineStore';
+import { processOfflineQueue, retryOfflineQueueItem } from './lib/offlineStore';
+import { OfflineQueueItem, getOfflineQueue, migrateLegacyLocalStorageQueue } from './lib/offlineDb';
 import {
   fetchAllProfiles,
   fetchOrCreateProfile,
@@ -56,7 +57,7 @@ export function App() {
   }, []);
 
   const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
-  const [offlineCount, setOfflineCount] = useState<number>(0);
+  const [offlineQueue, setOfflineQueue] = useState<OfflineQueueItem[]>([]);
   const [entries, setEntries] = useState<DiaryEntry[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(() => getStoredProjectId());
@@ -65,6 +66,9 @@ export function App() {
   const [user, setUser] = useState<User | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [theme, setTheme] = useState<'light' | 'dark'>(readStoredTheme);
+  // Set by the to-do list's "view source entry" action; DiaryRoute opens the
+  // matching entry's detail sheet once it mounts with this id, then clears it.
+  const [pendingEntryId, setPendingEntryId] = useState<string | null>(null);
 
   // --- Theme ---------------------------------------------------------------
   useEffect(() => {
@@ -146,10 +150,30 @@ export function App() {
     [loadProjects, fetchEntries]
   );
 
-  const updateOfflineCount = () => setOfflineCount(getOfflineQueue().length);
+  const refreshOfflineQueue = useCallback(async () => {
+    setOfflineQueue(await getOfflineQueue());
+  }, []);
+
+  const handleRetryQueueItem = useCallback(
+    async (id: string) => {
+      const result = await retryOfflineQueueItem(id);
+      await refreshOfflineQueue();
+      if (result.success) fetchEntries();
+    },
+    [refreshOfflineQueue, fetchEntries]
+  );
+
+  const openEntryInDiary = useCallback((entryId: string) => {
+    setPendingEntryId(entryId);
+    setCurrentRoute('diary');
+  }, []);
 
   // --- Auth ----------------------------------------------------------------
   useEffect(() => {
+    // One-time carry-over from the old localStorage+base64 queue before the
+    // first read of it, so nothing captured on a previous version is lost.
+    migrateLegacyLocalStorageQueue().then(refreshOfflineQueue);
+
     supabase.auth.getUser().then(({ data }) => {
       setUser(data.user ?? null);
       setAuthChecked(true);
@@ -161,7 +185,7 @@ export function App() {
     });
 
     return () => authListener.subscription.unsubscribe();
-  }, []);
+  }, [refreshOfflineQueue]);
 
   useEffect(() => {
     if (!user) {
@@ -179,7 +203,7 @@ export function App() {
     const handleOnline = () => {
       setIsOnline(true);
       processOfflineQueue().then(() => {
-        updateOfflineCount();
+        refreshOfflineQueue();
         fetchEntries();
       });
     };
@@ -187,13 +211,13 @@ export function App() {
 
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
-    updateOfflineCount();
+    refreshOfflineQueue();
 
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, [fetchEntries]);
+  }, [fetchEntries, refreshOfflineQueue]);
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -228,7 +252,8 @@ export function App() {
         currentRoute={currentRoute}
         onNavigate={setCurrentRoute}
         isOnline={isOnline}
-        offlineCount={offlineCount}
+        offlineQueue={offlineQueue}
+        onRetryQueueItem={handleRetryQueueItem}
         profile={profile}
         onSignOut={handleSignOut}
         theme={theme}
@@ -245,7 +270,7 @@ export function App() {
             activeProject={activeProject}
             profile={profile}
             onEntrySaved={() => {
-              updateOfflineCount();
+              refreshOfflineQueue();
               fetchEntries();
             }}
             onGoToProjects={() => setCurrentRoute('projects')}
@@ -262,10 +287,19 @@ export function App() {
             activeProject={activeProject}
             onRefresh={fetchEntries}
             onNavigateToSync={() => setCurrentRoute('sync')}
+            openEntryId={pendingEntryId}
+            onOpenEntryHandled={() => setPendingEntryId(null)}
           />
         )}
 
-        {currentRoute === 'digest' && <DigestRoute activeProject={activeProject} onRefresh={fetchEntries} />}
+        {currentRoute === 'digest' && (
+          <DigestRoute
+            activeProject={activeProject}
+            profiles={profiles}
+            onRefresh={fetchEntries}
+            onOpenEntry={openEntryInDiary}
+          />
+        )}
 
         {currentRoute === 'projects' && (
           <ProjectsRoute

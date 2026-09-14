@@ -18,10 +18,12 @@ import {
   DragEndEvent
 } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
-import { DailyDigest, EntryFlag, Project, TodoItem } from '../lib/types';
+import { DailyDigest, EntryFlag, Project, TodoItem, TodoPriority, UserProfile } from '../lib/types';
 import { supabase } from '../lib/supabase';
 import { Toast } from '../components/Toast';
 import { TodoItemRow } from '../components/TodoItemRow';
+import { Badge } from '../components/ui/Badge';
+import { Button } from '../components/ui/Button';
 import { getAccessToken } from '../lib/session';
 
 // --- Date helpers (local calendar, matching the existing date-input convention in this file) ---
@@ -67,10 +69,12 @@ function sortTodoItems(items: TodoItem[]): TodoItem[] {
 
 interface DigestRouteProps {
   activeProject: Project | null;
+  profiles: Record<string, UserProfile>;
   onRefresh: () => void;
+  onOpenEntry: (entryId: string) => void;
 }
 
-export const DigestRoute: React.FC<DigestRouteProps> = ({ activeProject, onRefresh }) => {
+export const DigestRoute: React.FC<DigestRouteProps> = ({ activeProject, profiles, onRefresh, onOpenEntry }) => {
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [digest, setDigest] = useState<DailyDigest | null>(null);
   const [loading, setLoading] = useState(false);
@@ -152,11 +156,16 @@ export const DigestRoute: React.FC<DigestRouteProps> = ({ activeProject, onRefre
 
       const flaggedThisWeek = (entriesData || []).filter((e: any) => flagsByEntryId[e.id]?.is_flagged);
 
-      // 2. Existing to-do items for this week
+      // 2. Existing to-do items: every still-open item regardless of which
+      //    week it was first flagged in (carry-forward), plus this week's
+      //    completed items (so "Đã hoàn thành" only shows this week's, not
+      //    every done item ever). An item's entry_id must still block
+      //    re-creation below no matter which week it lives under.
       const { data: existingItems } = await supabase
         .from('todo_items')
         .select('*')
-        .eq('week_start', weekStartStr)
+        .eq('dismissed', false)
+        .or(`is_done.eq.false,week_start.eq.${weekStartStr}`)
         .order('sort_order', { ascending: true });
 
       const existingByEntryId = new Set((existingItems || []).map((t: any) => t.entry_id));
@@ -277,6 +286,26 @@ export const DigestRoute: React.FC<DigestRouteProps> = ({ activeProject, onRefre
     }
   };
 
+  const updateTodoAssignee = async (item: TodoItem, userId: string | null) => {
+    setTodoItems((prev) => prev.map((t) => (t.id === item.id ? { ...t, assignee_id: userId } : t)));
+
+    const { error } = await supabase.from('todo_items').update({ assignee_id: userId }).eq('id', item.id);
+    if (error) {
+      setToast({ message: 'Lỗi cập nhật người phụ trách: ' + error.message, type: 'error', open: true });
+      setTodoItems((prev) => prev.map((t) => (t.id === item.id ? { ...t, assignee_id: item.assignee_id } : t)));
+    }
+  };
+
+  const updateTodoPriority = async (item: TodoItem, priority: TodoPriority) => {
+    setTodoItems((prev) => prev.map((t) => (t.id === item.id ? { ...t, priority } : t)));
+
+    const { error } = await supabase.from('todo_items').update({ priority }).eq('id', item.id);
+    if (error) {
+      setToast({ message: 'Lỗi cập nhật mức ưu tiên: ' + error.message, type: 'error', open: true });
+      setTodoItems((prev) => prev.map((t) => (t.id === item.id ? { ...t, priority: item.priority } : t)));
+    }
+  };
+
   // Soft-delete (dismissed = true) rather than a hard DELETE -- the row must
   // stick around so the weekly auto-populate merge doesn't recreate it the
   // next time this entry is still flagged.
@@ -382,18 +411,14 @@ export const DigestRoute: React.FC<DigestRouteProps> = ({ activeProject, onRefre
             </p>
           </div>
 
-          <button
+          <Button
+            size="sm"
             onClick={handleGenerateDigest}
             disabled={generating}
-            className="w-auto px-3.5 py-2 rounded-card bg-accent hover:bg-accent-hover text-accent-ink font-bold text-xs tracking-wide active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5 cursor-pointer"
+            icon={generating ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
           >
-            {generating ? (
-              <RefreshCw className="w-3.5 h-3.5 animate-spin text-accent-ink" />
-            ) : (
-              <Sparkles className="w-3.5 h-3.5" />
-            )}
-            <span>Tạo Tổng Hợp</span>
-          </button>
+            Tạo Tổng Hợp
+          </Button>
         </div>
 
         {/* Date Selector Banner */}
@@ -438,9 +463,9 @@ export const DigestRoute: React.FC<DigestRouteProps> = ({ activeProject, onRefre
                 <AlertTriangle className="w-4 h-4 text-warning" />
                 Section 1: ⚠️ Cần Chú Ý (Agenda)
               </h3>
-              <span className="pill px-2.5 py-0.5 bg-warning/15 text-warning border border-warning/30 font-bold flex items-center gap-1">
+              <Badge tone="warning" className="!h-auto !px-2.5 !py-0.5 !normal-case !tracking-normal">
                 To-Do Ngày Mai
-              </span>
+              </Badge>
             </div>
 
             <div className="text-xs text-ink leading-relaxed whitespace-pre-wrap font-sans">
@@ -455,9 +480,9 @@ export const DigestRoute: React.FC<DigestRouteProps> = ({ activeProject, onRefre
                 <FileCheck2 className="w-4 h-4 text-info" />
                 Section 2: 📋 Tóm Tắt (Summary)
               </h3>
-              <span className="pill px-2 py-0.5 bg-info/15 text-info border border-info/30">
+              <Badge tone="info" className="!h-auto !px-2 !py-0.5 !normal-case !tracking-normal">
                 Tiến Độ Tổng Quan
-              </span>
+              </Badge>
             </div>
 
             <div className="text-xs text-ink leading-relaxed whitespace-pre-wrap font-sans">
@@ -513,10 +538,15 @@ export const DigestRoute: React.FC<DigestRouteProps> = ({ activeProject, onRefre
                           <TodoItemRow
                             key={item.id}
                             item={item}
+                            profiles={profiles}
+                            viewedWeekStart={weekStart}
                             onToggleDone={toggleTodoDone}
                             onDueDateChange={updateTodoDueDate}
                             onTextChange={updateTodoText}
                             onDelete={deleteTodoItem}
+                            onAssigneeChange={updateTodoAssignee}
+                            onPriorityChange={updateTodoPriority}
+                            onOpenEntry={onOpenEntry}
                           />
                         ))}
                     </div>
@@ -532,10 +562,15 @@ export const DigestRoute: React.FC<DigestRouteProps> = ({ activeProject, onRefre
                         <TodoItemRow
                           key={item.id}
                           item={item}
+                          profiles={profiles}
+                          viewedWeekStart={weekStart}
                           onToggleDone={toggleTodoDone}
                           onDueDateChange={updateTodoDueDate}
                           onTextChange={updateTodoText}
                           onDelete={deleteTodoItem}
+                          onAssigneeChange={updateTodoAssignee}
+                          onPriorityChange={updateTodoPriority}
+                          onOpenEntry={onOpenEntry}
                           draggable={false}
                         />
                       ))}

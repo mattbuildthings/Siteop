@@ -5,23 +5,20 @@ import { DiaryEntry, Project, UserProfile, UserRole } from './types';
  * Role + project helpers.
  *
  * These mirror the SQL predicates in
- * supabase/migrations/20260909_projects_roles_and_entry_meta.sql. The database
- * is the enforcement point -- RLS policies and the lock triggers will reject a
+ * supabase/migrations/20260911_simplify_roles.sql. The database is the
+ * enforcement point -- RLS policies and the lock triggers will reject a
  * forbidden write no matter what the client believes. These functions exist so
  * the UI can hide actions that would fail, not to make the decision.
  */
 
 export const ROLE_RANK: Record<UserRole, number> = {
-  admin: 5,
-  superintendent: 4,
-  foreman: 3,
-  subcontractor: 2,
-  viewer: 1
+  admin: 3,
+  user: 2,
+  guest: 1
 };
 
 export function isManager(profile: UserProfile | null): boolean {
-  if (!profile) return false;
-  return profile.role === 'admin' || profile.role === 'superintendent';
+  return profile?.role === 'admin';
 }
 
 export function isAdmin(profile: UserProfile | null): boolean {
@@ -29,7 +26,7 @@ export function isAdmin(profile: UserProfile | null): boolean {
 }
 
 export function canWrite(profile: UserProfile | null): boolean {
-  return Boolean(profile) && profile!.role !== 'viewer';
+  return Boolean(profile) && profile!.role !== 'guest';
 }
 
 export function isEntryLocked(entry: DiaryEntry): boolean {
@@ -66,7 +63,7 @@ export async function fetchOrCreateProfile(userId: string, email?: string | null
   const fallbackName = (email || '').split('@')[0] || 'Người dùng';
   const { data: inserted, error: insertErr } = await supabase
     .from('user_profiles')
-    .insert({ user_id: userId, display_name: fallbackName, role: 'foreman' })
+    .insert({ user_id: userId, display_name: fallbackName, role: 'admin' })
     .select()
     .maybeSingle();
 
@@ -106,7 +103,7 @@ export async function fetchProjects(): Promise<Project[]> {
 
 const ACTIVE_PROJECT_KEY = 'siteop_active_project_v1';
 
-/** A foreman works one site all day -- remember it so they never pick twice. */
+/** Someone in the field works one site all day -- remember it so they never pick twice. */
 export function getStoredProjectId(): string | null {
   try {
     return localStorage.getItem(ACTIVE_PROJECT_KEY);

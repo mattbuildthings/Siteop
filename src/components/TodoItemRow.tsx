@@ -1,24 +1,45 @@
 import React, { useEffect, useState } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical, CheckCircle2, Circle, Trash2, Calendar, Pencil } from 'lucide-react';
-import { TodoItem } from '../lib/types';
+import { GripVertical, CheckCircle2, Circle, Trash2, Calendar, Pencil, ExternalLink, History } from 'lucide-react';
+import { TodoItem, TodoPriority, UserProfile } from '../lib/types';
+import { displayName } from '../lib/session';
+import { Badge } from './ui/Badge';
 
 interface TodoItemRowProps {
   item: TodoItem;
+  profiles: Record<string, UserProfile>;
+  /** Week currently being viewed; differs from item.week_start on a carried-forward item. */
+  viewedWeekStart: string;
   onToggleDone: (item: TodoItem) => void;
   onDueDateChange: (item: TodoItem, dueDate: string) => void;
   onTextChange: (item: TodoItem, text: string) => void;
   onDelete: (item: TodoItem) => void;
+  onAssigneeChange: (item: TodoItem, userId: string | null) => void;
+  onPriorityChange: (item: TodoItem, priority: TodoPriority) => void;
+  onOpenEntry?: (entryId: string) => void;
   draggable?: boolean;
 }
 
+const PRIORITY_ORDER: TodoPriority[] = ['low', 'normal', 'high'];
+const PRIORITY_LABEL: Record<TodoPriority, string> = { low: 'Thấp', normal: 'Vừa', high: 'Cao' };
+const PRIORITY_TONE: Record<TodoPriority, 'neutral' | 'info' | 'danger'> = {
+  low: 'neutral',
+  normal: 'info',
+  high: 'danger'
+};
+
 export const TodoItemRow: React.FC<TodoItemRowProps> = ({
   item,
+  profiles,
+  viewedWeekStart,
   onToggleDone,
   onDueDateChange,
   onTextChange,
   onDelete,
+  onAssigneeChange,
+  onPriorityChange,
+  onOpenEntry,
   draggable = true
 }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -54,6 +75,15 @@ export const TodoItemRow: React.FC<TodoItemRowProps> = ({
     transition,
     opacity: isDragging ? 0.5 : 1
   };
+
+  const priority: TodoPriority = item.priority ?? 'normal';
+  const cyclePriority = () => {
+    const next = PRIORITY_ORDER[(PRIORITY_ORDER.indexOf(priority) + 1) % PRIORITY_ORDER.length];
+    onPriorityChange(item, next);
+  };
+
+  const carriedOver = !item.is_done && item.week_start !== viewedWeekStart;
+  const teamList = Object.values(profiles);
 
   return (
     <div
@@ -128,6 +158,17 @@ export const TodoItemRow: React.FC<TodoItemRowProps> = ({
           </button>
         )}
 
+        {item.entry_id && onOpenEntry && (
+          <button
+            onClick={() => onOpenEntry(item.entry_id!)}
+            className="shrink-0 icon-btn icon-btn-sm text-ink-soft hover:text-accent transition cursor-pointer"
+            aria-label="Xem nhật ký gốc"
+            title="Xem nhật ký gốc"
+          >
+            <ExternalLink className="w-3.5 h-3.5" />
+          </button>
+        )}
+
         <button
           onClick={() => onDelete(item)}
           className="shrink-0 icon-btn icon-btn-sm text-ink-soft hover:text-danger transition cursor-pointer"
@@ -137,8 +178,16 @@ export const TodoItemRow: React.FC<TodoItemRowProps> = ({
         </button>
       </div>
 
-      {/* Bottom Row: Due date on the left, Job Number on the bottom right */}
-      <div className="flex items-center justify-between pl-8 pr-1 pt-1 border-t border-border/40 text-xs">
+      {/* Bottom rows: carry-forward badge, due date, priority, assignee, job number */}
+      {carriedOver && (
+        <div className="pl-8">
+          <Badge tone="warning" className="gap-1 !h-auto !px-2 !py-0.5 !normal-case !tracking-normal">
+            <History className="w-3 h-3" /> Mang từ tuần trước
+          </Badge>
+        </div>
+      )}
+
+      <div className="flex items-center flex-wrap gap-x-3 gap-y-1.5 pl-8 pr-1 pt-1 border-t border-border/40 text-xs">
         <div className="flex items-center gap-1.5 text-ink-soft">
           <Calendar className="w-3.5 h-3.5 text-ink-soft" />
           <input
@@ -149,13 +198,34 @@ export const TodoItemRow: React.FC<TodoItemRowProps> = ({
           />
         </div>
 
+        <button onClick={cyclePriority} className="cursor-pointer" title="Đổi mức độ ưu tiên">
+          <Badge tone={PRIORITY_TONE[priority]} className="!h-auto !px-2 !py-0.5 !normal-case !tracking-normal">
+            {PRIORITY_LABEL[priority]}
+          </Badge>
+        </button>
+
+        <select
+          value={item.assignee_id || ''}
+          onChange={(e) => onAssigneeChange(item, e.target.value || null)}
+          className="bg-transparent text-xs text-ink-soft focus:outline-none cursor-pointer max-w-[110px]"
+          title="Người phụ trách"
+        >
+          <option value="">Chưa giao</option>
+          {teamList.map((p) => (
+            <option key={p.user_id} value={p.user_id}>
+              {displayName(p)}
+            </option>
+          ))}
+        </select>
+
         {item.job_number && (
-          <span
-            className="font-mono text-xs font-bold text-accent bg-paper px-2 py-0.5 rounded-[6px] border border-border shrink-0 tracking-wider"
+          <Badge
+            tone="primary"
+            className="!h-auto !px-2 !py-0.5 font-mono !normal-case tracking-wider shrink-0 ml-auto"
             title="Mã công việc"
           >
             {item.job_number}
-          </span>
+          </Badge>
         )}
       </div>
     </div>

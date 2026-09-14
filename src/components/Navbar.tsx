@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Mic,
   BookOpen,
@@ -14,6 +14,9 @@ import {
 } from 'lucide-react';
 import { Project, ROLE_LABELS, UserProfile } from '../lib/types';
 import { initials } from '../lib/session';
+import { OfflineQueueItem } from '../lib/offlineDb';
+import { Badge } from './ui/Badge';
+import { OfflineQueuePanel } from './OfflineQueuePanel';
 
 export type RouteId = 'capture' | 'diary' | 'digest' | 'projects' | 'sync';
 
@@ -21,7 +24,8 @@ interface NavbarProps {
   currentRoute: RouteId;
   onNavigate: (route: RouteId) => void;
   isOnline: boolean;
-  offlineCount: number;
+  offlineQueue: OfflineQueueItem[];
+  onRetryQueueItem: (id: string) => void;
   profile: UserProfile | null;
   onSignOut: () => void;
   theme: 'light' | 'dark';
@@ -44,7 +48,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   currentRoute,
   onNavigate,
   isOnline,
-  offlineCount,
+  offlineQueue,
+  onRetryQueueItem,
   profile,
   onSignOut,
   theme,
@@ -53,6 +58,9 @@ export const Navbar: React.FC<NavbarProps> = ({
   activeProject,
   onSelectProject
 }) => {
+  const [showQueue, setShowQueue] = useState(false);
+  const offlineCount = offlineQueue.length;
+
   return (
     <>
       {/* Top Header Bar */}
@@ -65,32 +73,49 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
 
             {profile && (
-              <span
-                className="pill px-2 py-0.5 bg-card-alt text-ink-soft border border-border uppercase text-xs"
-                title={`Vai trò: ${ROLE_LABELS[profile.role]}`}
-              >
+              <Badge tone="neutral" className="gap-1" title={`Vai trò: ${ROLE_LABELS[profile.role]}`}>
                 {ROLE_LABELS[profile.role]}
-              </span>
+              </Badge>
             )}
           </div>
 
-          <div className="flex items-center gap-1.5 shrink-0">
-            <div
-              className={`pill px-2.5 py-1 font-semibold border ${
-                isOnline
-                  ? 'bg-accent/12 text-accent border-accent/40'
-                  : 'bg-warning/12 text-warning border-warning/40'
-              }`}
-              title={isOnline ? 'Đã kết nối' : 'Mất kết nối — nhật ký lưu trên máy'}
-            >
-              {isOnline ? <Wifi className="w-4 h-4" /> : <WifiOff className="w-4 h-4" />}
-              <span className="hidden xs:inline">{isOnline ? 'Online' : 'Offline'}</span>
-              {offlineCount > 0 && (
+          <div className="flex items-center gap-1.5 shrink-0 relative">
+            {offlineCount > 0 ? (
+              // Clickable once there's something queued: a count alone can't
+              // say whether it's waiting for signal or actually stuck.
+              <button
+                onClick={() => setShowQueue((v) => !v)}
+                className="pill gap-1.5 h-auto px-2.5 py-1 bg-warning-soft text-warning border border-warning/40 font-semibold text-xs cursor-pointer"
+                aria-expanded={showQueue}
+                aria-label="Xem hàng chờ đồng bộ"
+                title="Xem hàng chờ đồng bộ"
+              >
+                {isOnline ? <Wifi className="w-4 h-4" /> : <WifiOff className="w-4 h-4" />}
+                <span className="hidden xs:inline">{isOnline ? 'Online' : 'Offline'}</span>
                 <span className="bg-warning text-paper font-bold px-1.5 rounded-full text-xs leading-5">
                   {offlineCount}
                 </span>
-              )}
-            </div>
+              </button>
+            ) : (
+              <Badge
+                tone={isOnline ? 'primary' : 'warning'}
+                className="gap-1.5 h-auto px-2.5 py-1 normal-case tracking-normal text-xs"
+                title={isOnline ? 'Đã kết nối' : 'Mất kết nối — nhật ký lưu trên máy'}
+              >
+                {isOnline ? <Wifi className="w-4 h-4" /> : <WifiOff className="w-4 h-4" />}
+                <span className="hidden xs:inline">{isOnline ? 'Online' : 'Offline'}</span>
+              </Badge>
+            )}
+
+            {showQueue && (
+              <OfflineQueuePanel
+                items={offlineQueue}
+                onRetry={(id) => {
+                  onRetryQueueItem(id);
+                }}
+                onClose={() => setShowQueue(false)}
+              />
+            )}
 
             <button
               onClick={onToggleTheme}

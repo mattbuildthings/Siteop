@@ -15,10 +15,8 @@ import {
   fetchOrCreateProfile,
   fetchProjects,
   getStoredProjectId,
-  isPending,
   storeProjectId
 } from './lib/session';
-import { PendingApprovalScreen } from './components/PendingApprovalScreen';
 import { User } from '@supabase/supabase-js';
 
 const ROUTES: RouteId[] = ['capture', 'diary', 'digest', 'projects', 'sync'];
@@ -248,12 +246,10 @@ export function App() {
     return <AuthScreen onSuccess={() => setAuthChecked(true)} />;
   }
 
-  // Signed in but not yet approved. The database already returns nothing to a
-  // 'pending' account, so without this the app would render as a set of empty
-  // screens and look broken rather than deliberately closed.
-  if (isPending(profile)) {
-    return <PendingApprovalScreen profile={profile} onSignOut={handleSignOut} />;
-  }
+  // No approval gate. A new signup is a read-only guest on the demo project
+  // (20260918 migration) and goes straight into the app, so there is nothing to
+  // hold them behind -- an admin promoting them to `user` is an upgrade, not an
+  // unlock.
 
   return (
     <div className="min-h-screen bg-paper text-ink flex flex-col">

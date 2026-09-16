@@ -23,6 +23,7 @@ import {
   fetchProjectMemberIds,
   isAdmin,
   isManager,
+  markUserReviewed,
   setProjectMembership,
   setUserRole
 } from '../lib/session';
@@ -227,10 +228,25 @@ export const ProjectsRoute: React.FC<ProjectsRouteProps> = ({
     setSavingRole(userId);
     try {
       await setUserRole(userId, role);
-      showToast('Đã duyệt tài khoản. Nhớ phân công vào công trình.', 'success');
+      showToast('Đã cấp quyền. Nhớ phân công vào công trình.', 'success');
       onProjectsChanged();
     } catch (err: any) {
-      showToast('Lỗi duyệt tài khoản: ' + (err.message || 'Thử lại'), 'error');
+      showToast('Lỗi cấp quyền: ' + (err.message || 'Thử lại'), 'error');
+    } finally {
+      setSavingRole(null);
+    }
+  };
+
+  // Leaves the account exactly as it is -- a read-only guest on the demo
+  // project -- and just takes it off this list.
+  const keepAsGuest = async (userId: string) => {
+    setSavingRole(userId);
+    try {
+      await markUserReviewed(userId);
+      showToast('Giữ làm khách. Đã bỏ khỏi danh sách tài khoản mới.', 'success');
+      onProjectsChanged();
+    } catch (err: any) {
+      showToast('Lỗi: ' + (err.message || 'Thử lại'), 'error');
     } finally {
       setSavingRole(null);
     }
@@ -266,11 +282,12 @@ export const ProjectsRoute: React.FC<ProjectsRouteProps> = ({
     }
   };
 
-  // Unapproved signups are pulled out of the team list into their own section:
-  // an account waiting on someone is a task, not a row to scroll past.
+  // New signups get their own section: an account nobody has looked at is a
+  // task, not a row to scroll past. They still appear in the team list below --
+  // they are already working guests, not applicants.
   const allProfiles = Object.values(profiles);
-  const pendingList = allProfiles.filter((u) => u.role === 'pending');
-  const teamList = allProfiles.filter((u) => u.role !== 'pending');
+  const newAccounts = allProfiles.filter((u) => !u.reviewed_at);
+  const teamList = allProfiles;
 
   // Admins already see every project, so offering to "assign" one is noise.
   const assignableUsers = teamList.filter((u) => u.role !== 'admin');
@@ -337,6 +354,13 @@ export const ProjectsRoute: React.FC<ProjectsRouteProps> = ({
                       {!p.is_active && (
                         <Badge tone="neutral" className="!h-auto !px-2 !py-0.5 !normal-case !tracking-normal">
                           Đã đóng
+                        </Badge>
+                      )}
+                      {/* So an admin can tell at a glance where new signups
+                          land -- otherwise the only way to know is the database. */}
+                      {p.is_guest_default && (
+                        <Badge tone="info" className="!h-auto !px-2 !py-0.5 !normal-case !tracking-normal">
+                          Khách mới vào đây
                         </Badge>
                       )}
                     </div>
@@ -434,43 +458,54 @@ export const ProjectsRoute: React.FC<ProjectsRouteProps> = ({
         </div>
       )}
 
-      {/* Signups waiting on an admin. Deliberately above the team panel and
-          always expanded -- this is the one thing on this screen that someone
-          else is blocked on. */}
-      {admin && pendingList.length > 0 && (
+      {/* New signups. Above the team panel and always expanded -- it is the one
+          thing on this screen with someone waiting at the other end. They are
+          not blocked while they wait: they can already read the demo project. */}
+      {admin && newAccounts.length > 0 && (
         <div className="card p-4 space-y-3 border-accent/40">
           <span className="flex items-center gap-2 text-sm font-bold text-ink">
             <Clock className="w-4 h-4 text-accent" />
-            Chờ duyệt ({pendingList.length})
+            Tài khoản mới ({newAccounts.length})
           </span>
 
           <div className="space-y-2">
-            {pendingList.map((u) => (
+            {newAccounts.map((u) => (
               <div key={u.user_id} className="p-2.5 rounded-[12px] bg-card-alt border border-border space-y-2">
                 <div className="min-w-0">
                   <p className="text-sm font-bold text-ink truncate">{u.display_name || 'Không tên'}</p>
-                  {u.company && <p className="text-xs text-ink-soft truncate">{u.company}</p>}
+                  <p className="text-xs text-ink-soft truncate">
+                    {ROLE_LABELS[u.role]}
+                    {u.company ? ` · ${u.company}` : ''}
+                  </p>
                 </div>
 
                 <div className="flex flex-wrap gap-2">
-                  {ASSIGNABLE_ROLES.map((r) => (
+                  {ASSIGNABLE_ROLES.filter((r) => r !== 'guest').map((r) => (
                     <button
                       key={r}
                       disabled={savingRole === u.user_id}
                       onClick={() => approveUser(u.user_id, r)}
                       className="px-3 py-2 rounded-[12px] border border-border text-xs font-bold text-ink hover:border-border-strong transition disabled:opacity-50"
                     >
-                      Duyệt · {ROLE_LABELS[r]}
+                      Cấp quyền · {ROLE_LABELS[r]}
                     </button>
                   ))}
+
+                  <button
+                    disabled={savingRole === u.user_id}
+                    onClick={() => keepAsGuest(u.user_id)}
+                    className="px-3 py-2 rounded-[12px] border border-border text-xs font-bold text-ink-soft hover:text-ink hover:border-border-strong transition disabled:opacity-50"
+                  >
+                    Giữ làm khách
+                  </button>
                 </div>
               </div>
             ))}
           </div>
 
           <p className="text-xs text-ink-soft">
-            Tài khoản mới không xem hay ghi được gì cho tới khi được duyệt. Sau khi duyệt, nhớ phân công họ vào công
-            trình — người dùng chỉ thấy công trình được phân công.
+            Tài khoản mới tự vào công trình demo với quyền khách (chỉ xem). Cấp quyền "Người dùng" để họ ghi được nhật
+            ký, rồi phân công vào công trình của họ — người dùng chỉ thấy công trình được phân công.
           </p>
         </div>
       )}

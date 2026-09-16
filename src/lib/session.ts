@@ -30,9 +30,11 @@ export function canWrite(profile: UserProfile | null): boolean {
   return profile?.role === 'admin' || profile?.role === 'user';
 }
 
-/** A signup nobody has approved yet. Mirrors siteop_role()'s 'pending'. */
-export function isPending(profile: UserProfile | null): boolean {
-  return profile?.role === 'pending';
+/** A signup no admin has made a decision about yet. Everyone lands as a guest
+ *  on the demo project, so `role` alone cannot tell a brand-new account apart
+ *  from someone deliberately left read-only -- reviewed_at is what does. */
+export function needsReview(profile: UserProfile | null): boolean {
+  return Boolean(profile) && !profile!.reviewed_at;
 }
 
 /** Only admins assign roles and project membership -- enforced in the database
@@ -56,6 +58,14 @@ export async function setUserRole(userId: string, role: UserRole): Promise<void>
     p_user_id: userId,
     p_role: role
   });
+  if (error) throw new Error(error.message);
+}
+
+/** "Keep them as a guest" -- takes the account off the admin's new-accounts
+ *  list without changing what it can do. Assigning a role marks it reviewed
+ *  too; this is the path for the accounts that should stay read-only. */
+export async function markUserReviewed(userId: string): Promise<void> {
+  const { error } = await supabase.rpc('siteop_mark_user_reviewed', { p_user_id: userId });
   if (error) throw new Error(error.message);
 }
 

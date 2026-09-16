@@ -18,6 +18,22 @@ function stripDataUrl(audioBase64: string): string {
   return audioBase64.includes(';base64,') ? audioBase64.split(';base64,')[1] : audioBase64;
 }
 
+/**
+ * Every /api call below must carry the signed-in user's token.
+ *
+ * The routes used to accept an unauthenticated POST -- a plain `curl` to
+ * /api/extract returned a full extraction and billed it to the project's Gemini
+ * key. They now return 401 without a valid token, and the token is also what
+ * the per-user daily call ceiling counts against.
+ */
+async function authHeaders(): Promise<Record<string, string>> {
+  const accessToken = await getAccessToken();
+  return {
+    'Content-Type': 'application/json',
+    ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {})
+  };
+}
+
 export interface AnalysisResult {
   text?: string;
   extracted_data?: ExtractedData;
@@ -42,7 +58,7 @@ export async function analyzeAudio(
   try {
     const transcribeRes = await fetch('/api/transcribe', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await authHeaders(),
       body: JSON.stringify({ audioBase64: cleanBase64, mimeType })
     });
 
@@ -60,7 +76,7 @@ export async function analyzeAudio(
 
     const extractRes = await fetch('/api/extract', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await authHeaders(),
       body: JSON.stringify({ transcription: transcriptionText })
     });
 
@@ -82,7 +98,7 @@ export async function extractFromText(transcription: string): Promise<AnalysisRe
   try {
     const res = await fetch('/api/extract', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await authHeaders(),
       body: JSON.stringify({ transcription })
     });
 
@@ -115,7 +131,7 @@ export async function processAudioWithGemini(
   try {
     const transcribeRes = await fetch('/api/transcribe', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await authHeaders(),
       body: JSON.stringify({ audioBase64: cleanBase64, mimeType, entryId, accessToken })
     });
 
@@ -133,7 +149,7 @@ export async function processAudioWithGemini(
 
     const extractRes = await fetch('/api/extract', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await authHeaders(),
       body: JSON.stringify({ transcription: transcriptionText, entryId, accessToken })
     });
 

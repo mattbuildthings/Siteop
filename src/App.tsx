@@ -246,6 +246,11 @@ export function App() {
     return <AuthScreen onSuccess={() => setAuthChecked(true)} />;
   }
 
+  // No approval gate. A new signup is a read-only guest on the demo project
+  // (20260918 migration) and goes straight into the app, so there is nothing to
+  // hold them behind -- an admin promoting them to `user` is an upgrade, not an
+  // unlock.
+
   return (
     <div className="min-h-screen bg-paper text-ink flex flex-col">
       <Navbar

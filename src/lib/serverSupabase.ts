@@ -38,6 +38,65 @@ export function readAccessToken(req: { body?: any; headers?: Record<string, any>
   return null;
 }
 
+/**
+ * Resolves the caller to a real Supabase user, or null.
+ *
+ * The three AI routes previously accepted an unauthenticated POST: a plain
+ * `curl` to /api/extract with no token returned a full Gemini extraction, which
+ * means anyone holding the public URL could spend the project's Gemini quota.
+ * Requiring a user is also what makes a per-user call ceiling meaningful --
+ * there is nothing to count against otherwise.
+ */
+export async function requireUser(
+  accessToken: string | null
+): Promise<{ client: SupabaseClient; userId: string } | null> {
+  if (!accessToken) return null;
+
+  const client = createUserClient(accessToken);
+  if (!client) return null;
+
+  const { data, error } = await client.auth.getUser();
+  if (error || !data?.user) return null;
+
+  return { client, userId: data.user.id };
+}
+
+/**
+ * Increments this user's daily counter for `route` and reports whether they are
+ * still under the ceiling.
+ *
+ * The counting lives in a SECURITY DEFINER function (see the 20260916
+ * migration) rather than a plain table write, so a user cannot reset or
+ * decrement their own counter from the browser with the same anon key.
+ *
+ * Fails OPEN on an unexpected error: an AI feature that stops working because
+ * the counter is unavailable is a worse outcome than one extra call. A missing
+ * function (migration not yet applied) therefore logs and allows.
+ */
+export async function bumpAiUsage(
+  client: SupabaseClient,
+  route: string,
+  dailyLimit: number
+): Promise<{ allowed: boolean; calls: number | null }> {
+  try {
+    const { data, error } = await client.rpc('siteop_bump_ai_usage', {
+      p_route: route,
+      p_limit: dailyLimit
+    });
+
+    if (error) {
+      console.warn(`[ai-usage] counter unavailable for ${route}, allowing call:`, error.message);
+      return { allowed: true, calls: null };
+    }
+
+    const row = Array.isArray(data) ? data[0] : data;
+    return { allowed: row?.allowed !== false, calls: row?.calls ?? null };
+  } catch (err: any) {
+    console.warn(`[ai-usage] counter threw for ${route}, allowing call:`, err?.message);
+    return { allowed: true, calls: null };
+  }
+}
+
 export function createUserClient(accessToken: string | null): SupabaseClient | null {
   if (!hasSupabaseConfig()) return null;
 

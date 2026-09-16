@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { GoogleGenerativeAI } from '@google/generative-ai';
-import { GEMINI_MODEL } from '../src/lib/geminiConfig.js';
-import { createUserClient, readAccessToken } from '../src/lib/serverSupabase.js';
+import { generateWithLimits } from '../src/lib/geminiCall.js';
+import { AI_DAILY_CALL_LIMIT, MAX_OUTPUT_TOKENS } from '../src/lib/geminiConfig.js';
+import { bumpAiUsage, readAccessToken, requireUser } from '../src/lib/serverSupabase.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -9,10 +9,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(500).json({ error: 'GEMINI_API_KEY server environment variable not configured' });
   }
 
-  const supabase = createUserClient(readAccessToken(req));
-  if (!supabase) {
-    return res.status(500).json({ error: 'Supabase is not configured on the server' });
+  // Auth first: this route spends money, so it is not open to the internet.
+  //
+  // NOTE on the vercel.json cron: it invokes this path with no Authorization
+  // header, so it is rejected here. That is not a regression -- the scheduled
+  // run was already a no-op. Verified against production on 2026-09-16: an
+  // unauthenticated POST returned `entries_count: 0` against a database
+  // holding 10 logs, because RLS correctly hides every row from an anonymous
+  // caller, and its write-back was rejected for the same reason. Giving the
+  // cron a real identity (a CRON_SECRET plus a service-role client, scoped to
+  // digest writes) is a separate change and is deliberately not bundled here.
+  const auth = await requireUser(readAccessToken(req));
+  if (!auth) {
+    return res.status(401).json({ error: 'Sign-in required', code: 'unauthenticated' });
   }
+
+  const supabase = auth.client;
 
   try {
     let targetDate = (req.query.date as string) || (req.body && req.body.date);
@@ -131,8 +143,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       promptContent += `\n`;
     });
 
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
+    // Counted here rather than at the top of the handler: the zero-entry
+    // short-circuit above returns without calling Gemini, and an empty digest
+    // costs nothing, so it should not consume the user's daily allowance.
+    const usage = await bumpAiUsage(supabase, 'digest', AI_DAILY_CALL_LIMIT);
+    if (!usage.allowed) {
+      return res.status(429).json({
+        error: 'Daily AI limit reached for this account',
+        code: 'daily_limit_reached',
+        calls: usage.calls,
+        limit: AI_DAILY_CALL_LIMIT
+      });
+    }
 
     const systemPrompt = `Bạn là chuyên gia quản lý công trình xây dựng tại Việt Nam.
 Dựa vào danh sách nhật ký công trình ngày ${targetDate} được cung cấp bên dưới, hãy tổng hợp báo cáo ngày theo đúng JSON format:
@@ -145,21 +167,37 @@ YÊU CẦU TRẢ VỀ JSON THUẦN TÚY (không kèm markdown):
   "summary_text": "Tóm tắt tổng quan tiến độ công trình trong ngày, vật tư và nhân công các hạng mục còn lại."
 }`;
 
-    const result = await model.generateContent(systemPrompt);
-    const responseText = result.response.text();
+    const result = await generateWithLimits(apiKey, [systemPrompt], {
+      maxOutputTokens: MAX_OUTPUT_TOKENS.digest,
+      label: 'digest'
+    });
+    const responseText = result.text;
 
-    let agendaText = 'Chưa có mục chú ý đặc biệt.';
-    let summaryText = 'Đã hoàn thành các công việc theo kế hoạch.';
+    // As in /api/extract: an unparseable reply must not be saved as a digest.
+    // The previous defaults ("Chưa có mục chú ý đặc biệt" / "Đã hoàn thành các
+    // công việc theo kế hoạch") would be upserted over a real digest and read
+    // as a calm, accurate report of a day that may have had delays or a safety
+    // incident in it. With maxOutputTokens now capping the reply, a truncated
+    // response is a real possibility, so this has to fail loudly.
+    let agendaText: string;
+    let summaryText: string;
 
     try {
       const match = responseText.match(/\{[\s\S]*\}/);
-      if (match) {
-        const parsed = JSON.parse(match[0]);
-        agendaText = parsed.agenda_text || agendaText;
-        summaryText = parsed.summary_text || summaryText;
-      }
-    } catch (e) {
-      console.warn('Failed parsing digest JSON:', e);
+      if (!match) throw new Error('no JSON object in model response');
+      const parsed = JSON.parse(match[0]);
+      agendaText = parsed.agenda_text || 'Chưa có mục chú ý đặc biệt.';
+      summaryText = parsed.summary_text || 'Đã hoàn thành các công việc theo kế hoạch.';
+    } catch (e: any) {
+      console.error(
+        `[digest] unparseable model response after ${result.attempts} attempt(s),` +
+          ` ${responseText.length} chars:`,
+        e?.message
+      );
+      return res.status(502).json({
+        error: 'AI returned an unreadable response',
+        code: 'malformed_ai_response'
+      });
     }
 
     const digestPayload = {

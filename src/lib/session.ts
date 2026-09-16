@@ -14,7 +14,8 @@ import { DiaryEntry, Project, UserProfile, UserRole } from './types';
 export const ROLE_RANK: Record<UserRole, number> = {
   admin: 3,
   user: 2,
-  guest: 1
+  guest: 1,
+  pending: 0 // unapproved -- below read-only on purpose
 };
 
 export function isManager(profile: UserProfile | null): boolean {
@@ -26,7 +27,46 @@ export function isAdmin(profile: UserProfile | null): boolean {
 }
 
 export function canWrite(profile: UserProfile | null): boolean {
-  return Boolean(profile) && profile!.role !== 'guest';
+  return profile?.role === 'admin' || profile?.role === 'user';
+}
+
+/** A signup no admin has made a decision about yet. Everyone lands as a guest
+ *  on the demo project, so `role` alone cannot tell a brand-new account apart
+ *  from someone deliberately left read-only -- reviewed_at is what does. */
+export function needsReview(profile: UserProfile | null): boolean {
+  return Boolean(profile) && !profile!.reviewed_at;
+}
+
+/** Only admins assign roles and project membership -- enforced in the database
+ *  by siteop_set_user_role() and the siteop_members_write policy; this is just
+ *  so the UI doesn't offer actions that would be rejected. */
+export function canManageTeam(profile: UserProfile | null): boolean {
+  return profile?.role === 'admin';
+}
+
+/**
+ * Changes another user's role.
+ *
+ * Goes through the database function rather than an UPDATE: the role column's
+ * UPDATE privilege is revoked from ordinary clients, precisely so that a direct
+ * `update({ role })` -- which is what this used to be -- cannot work from
+ * anywhere, including the browser console. The function re-checks that the
+ * caller is an admin and refuses to remove the last one.
+ */
+export async function setUserRole(userId: string, role: UserRole): Promise<void> {
+  const { error } = await supabase.rpc('siteop_set_user_role', {
+    p_user_id: userId,
+    p_role: role
+  });
+  if (error) throw new Error(error.message);
+}
+
+/** "Keep them as a guest" -- takes the account off the admin's new-accounts
+ *  list without changing what it can do. Assigning a role marks it reviewed
+ *  too; this is the path for the accounts that should stay read-only. */
+export async function markUserReviewed(userId: string): Promise<void> {
+  const { error } = await supabase.rpc('siteop_mark_user_reviewed', { p_user_id: userId });
+  if (error) throw new Error(error.message);
 }
 
 export function isEntryLocked(entry: DiaryEntry): boolean {
@@ -60,10 +100,16 @@ export async function fetchOrCreateProfile(userId: string, email?: string | null
 
   if (!error && data) return data as UserProfile;
 
+  // Deliberately does NOT send `role`. New accounts must land as 'pending' and
+  // wait for an admin; this fallback used to write role 'admin', which made
+  // every signup that missed the database trigger a full administrator. The
+  // role column's INSERT privilege is now revoked from clients anyway, so
+  // naming it here would fail the insert outright -- the column default
+  // ('pending') is the only thing that sets it. See the 20260917 migration.
   const fallbackName = (email || '').split('@')[0] || 'Người dùng';
   const { data: inserted, error: insertErr } = await supabase
     .from('user_profiles')
-    .insert({ user_id: userId, display_name: fallbackName, role: 'admin' })
+    .insert({ user_id: userId, display_name: fallbackName })
     .select()
     .maybeSingle();
 
@@ -99,6 +145,51 @@ export async function fetchProjects(): Promise<Project[]> {
     return [];
   }
   return (data as Project[]) || [];
+}
+
+/**
+ * Who is on which site.
+ *
+ * `project_members` drives every non-admin's visibility: a `user` or `guest`
+ * sees exactly the projects they have a row here for, and nothing else. Until
+ * now rows were only ever written for a project's own creator, so there was no
+ * way to give anyone else access to a site -- which is why everyone ended up an
+ * admin. Writes are admin-only, enforced by the siteop_members_write policy.
+ */
+export async function fetchProjectMemberIds(projectId: string): Promise<string[]> {
+  const { data, error } = await supabase
+    .from('project_members')
+    .select('user_id')
+    .eq('project_id', projectId);
+
+  if (error) {
+    console.warn('Could not load project members:', error);
+    return [];
+  }
+  return (data as Array<{ user_id: string }>).map((m) => m.user_id);
+}
+
+export async function setProjectMembership(
+  projectId: string,
+  userId: string,
+  isMember: boolean
+): Promise<void> {
+  if (isMember) {
+    // Idempotent: the table is UNIQUE (project_id, user_id), so a double-click
+    // should be a no-op rather than a duplicate-key error in the user's face.
+    const { error } = await supabase
+      .from('project_members')
+      .upsert({ project_id: projectId, user_id: userId }, { onConflict: 'project_id,user_id' });
+    if (error) throw new Error(error.message);
+    return;
+  }
+
+  const { error } = await supabase
+    .from('project_members')
+    .delete()
+    .eq('project_id', projectId)
+    .eq('user_id', userId);
+  if (error) throw new Error(error.message);
 }
 
 const ACTIVE_PROJECT_KEY = 'siteop_active_project_v1';

@@ -63,13 +63,24 @@ export type EntryStatus = 'draft' | 'filed' | 'archived' | 'error';
 //   user  — create + edit own entries, file/lock own entries, see projects
 //           they belong to. Cannot manage projects, users, or others' entries.
 //   guest — read-only on projects they belong to.
-export type UserRole = 'admin' | 'user' | 'guest';
+//   pending — legacy. 20260917 briefly made this the state every new signup
+//           landed in, behind an "awaiting approval" screen; 20260918 replaced
+//           that with "guest on the demo project" so nobody is held at the
+//           door. Nothing creates it any more and no rows carry it, but the
+//           database CHECK still accepts it, so the value stays here rather
+//           than becoming an unlabelled role if one ever turns up.
+export type UserRole = 'admin' | 'user' | 'guest' | 'pending';
 
 export const ROLE_LABELS: Record<UserRole, string> = {
   admin: 'Quản trị',
   user: 'Người dùng',
-  guest: 'Khách (chỉ xem)'
+  guest: 'Khách (chỉ xem)',
+  pending: 'Chờ duyệt'
 };
+
+/** Roles an admin can assign from the team panel. `pending` is a state an
+ *  account arrives in, not a role you hand someone, so it is not offered. */
+export const ASSIGNABLE_ROLES: UserRole[] = ['admin', 'user', 'guest'];
 
 export interface UserProfile {
   user_id: string;
@@ -77,6 +88,9 @@ export interface UserProfile {
   company?: string | null;
   role: UserRole;
   created_at?: string;
+  /** When an admin last made a decision about this account. Null means it is a
+   *  new signup sitting in the admin's list waiting to be looked at. */
+  reviewed_at?: string | null;
 }
 
 export interface Project {
@@ -90,6 +104,9 @@ export interface Project {
   is_active: boolean;
   created_by?: string | null;
   created_at?: string;
+  /** The site every new signup is dropped onto as a read-only guest. At most
+   *  one project can carry this, enforced by a partial unique index. */
+  is_guest_default?: boolean;
 }
 
 export interface ProjectMember {

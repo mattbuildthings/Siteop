@@ -11,14 +11,22 @@ import {
   ChevronRight,
   CheckCircle2,
   Archive,
-  CloudSun
+  CloudSun,
+  Clock
 } from 'lucide-react';
-import { Project, ROLE_LABELS, UserProfile, UserRole } from '../lib/types';
+import { ASSIGNABLE_ROLES, Project, ROLE_LABELS, UserProfile, UserRole } from '../lib/types';
 import { supabase } from '../lib/supabase';
 import { Toast } from '../components/Toast';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
-import { isAdmin, isManager } from '../lib/session';
+import {
+  fetchProjectMemberIds,
+  isAdmin,
+  isManager,
+  markUserReviewed,
+  setProjectMembership,
+  setUserRole
+} from '../lib/session';
 import { fetchWeather, formatWeather } from '../lib/weather';
 
 interface ProjectsRouteProps {
@@ -57,6 +65,10 @@ export const ProjectsRoute: React.FC<ProjectsRouteProps> = ({
   const [weatherPreview, setWeatherPreview] = useState<string>('');
   const [showTeam, setShowTeam] = useState(false);
   const [savingRole, setSavingRole] = useState<string | null>(null);
+  const [membersFor, setMembersFor] = useState<string | null>(null);
+  const [memberIds, setMemberIds] = useState<string[]>([]);
+  const [loadingMembers, setLoadingMembers] = useState(false);
+  const [savingMember, setSavingMember] = useState<string | null>(null);
 
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info'; open: boolean }>({
     message: '',
@@ -193,11 +205,16 @@ export const ProjectsRoute: React.FC<ProjectsRouteProps> = ({
     }
   };
 
+  // Goes through siteop_set_user_role() rather than an UPDATE: the role
+  // column's UPDATE privilege is revoked from clients, so a direct write no
+  // longer works from anywhere -- including a browser console, which is exactly
+  // how a user used to be able to make themselves an admin. The function also
+  // refuses to remove the last admin, and that refusal surfaces here as a toast
+  // rather than an unexplained failure.
   const changeRole = async (userId: string, role: UserRole) => {
     setSavingRole(userId);
     try {
-      const { error } = await supabase.from('user_profiles').update({ role }).eq('user_id', userId);
-      if (error) throw error;
+      await setUserRole(userId, role);
       showToast('Đã đổi vai trò.', 'success');
       onProjectsChanged();
     } catch (err: any) {
@@ -207,7 +224,73 @@ export const ProjectsRoute: React.FC<ProjectsRouteProps> = ({
     }
   };
 
-  const teamList = Object.values(profiles);
+  const approveUser = async (userId: string, role: UserRole) => {
+    setSavingRole(userId);
+    try {
+      await setUserRole(userId, role);
+      showToast('Đã cấp quyền. Nhớ phân công vào công trình.', 'success');
+      onProjectsChanged();
+    } catch (err: any) {
+      showToast('Lỗi cấp quyền: ' + (err.message || 'Thử lại'), 'error');
+    } finally {
+      setSavingRole(null);
+    }
+  };
+
+  // Leaves the account exactly as it is -- a read-only guest on the demo
+  // project -- and just takes it off this list.
+  const keepAsGuest = async (userId: string) => {
+    setSavingRole(userId);
+    try {
+      await markUserReviewed(userId);
+      showToast('Giữ làm khách. Đã bỏ khỏi danh sách tài khoản mới.', 'success');
+      onProjectsChanged();
+    } catch (err: any) {
+      showToast('Lỗi: ' + (err.message || 'Thử lại'), 'error');
+    } finally {
+      setSavingRole(null);
+    }
+  };
+
+  // Membership for the project whose panel is open. Loaded on demand rather
+  // than up front: it is admin-only UI and one site at a time is all that is
+  // ever shown.
+  const openMembers = async (projectId: string) => {
+    if (membersFor === projectId) {
+      setMembersFor(null);
+      return;
+    }
+    setMembersFor(projectId);
+    setLoadingMembers(true);
+    try {
+      setMemberIds(await fetchProjectMemberIds(projectId));
+    } finally {
+      setLoadingMembers(false);
+    }
+  };
+
+  const toggleMembership = async (projectId: string, userId: string, isMember: boolean) => {
+    setSavingMember(userId);
+    try {
+      await setProjectMembership(projectId, userId, isMember);
+      setMemberIds((prev) => (isMember ? [...prev, userId] : prev.filter((id) => id !== userId)));
+      showToast(isMember ? 'Đã thêm vào công trình.' : 'Đã gỡ khỏi công trình.', 'success');
+    } catch (err: any) {
+      showToast('Lỗi phân công: ' + (err.message || 'Thử lại'), 'error');
+    } finally {
+      setSavingMember(null);
+    }
+  };
+
+  // New signups get their own section: an account nobody has looked at is a
+  // task, not a row to scroll past. They still appear in the team list below --
+  // they are already working guests, not applicants.
+  const allProfiles = Object.values(profiles);
+  const newAccounts = allProfiles.filter((u) => !u.reviewed_at);
+  const teamList = allProfiles;
+
+  // Admins already see every project, so offering to "assign" one is noise.
+  const assignableUsers = teamList.filter((u) => u.role !== 'admin');
 
   return (
     <div className="w-full max-w-md mx-auto px-4 py-4 pb-28 space-y-4">
@@ -273,6 +356,13 @@ export const ProjectsRoute: React.FC<ProjectsRouteProps> = ({
                           Đã đóng
                         </Badge>
                       )}
+                      {/* So an admin can tell at a glance where new signups
+                          land -- otherwise the only way to know is the database. */}
+                      {p.is_guest_default && (
+                        <Badge tone="info" className="!h-auto !px-2 !py-0.5 !normal-case !tracking-normal">
+                          Khách mới vào đây
+                        </Badge>
+                      )}
                     </div>
 
                     {p.address && (
@@ -299,18 +389,124 @@ export const ProjectsRoute: React.FC<ProjectsRouteProps> = ({
                 </button>
 
                 {manager && (
-                  <div className="flex items-center gap-2 pt-2 border-t border-border">
+                  <div className="flex items-center gap-2 pt-2 border-t border-border flex-wrap">
                     <Button variant="secondary" size="sm" onClick={() => openEdit(p)}>
                       Sửa
                     </Button>
                     <Button variant="secondary" size="sm" onClick={() => toggleActive(p)} icon={<Archive className="w-4 h-4" />}>
                       {p.is_active ? 'Đóng' : 'Mở lại'}
                     </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => openMembers(p.id)}
+                      icon={<Users className="w-4 h-4" />}
+                    >
+                      Nhân sự
+                    </Button>
+                  </div>
+                )}
+
+                {/* Who can see this site. Admin-only, and the database agrees:
+                    project_members writes are restricted to admins by the
+                    siteop_members_write policy, so this panel cannot be used to
+                    grant access the caller does not have. A user sees only the
+                    sites listed here for them and cannot switch to another. */}
+                {manager && membersFor === p.id && (
+                  <div className="pt-2 border-t border-border space-y-2">
+                    {loadingMembers ? (
+                      <p className="text-xs text-ink-soft">Đang tải nhân sự...</p>
+                    ) : assignableUsers.length === 0 ? (
+                      <p className="text-xs text-ink-soft">
+                        Chưa có người dùng nào để phân công. Duyệt tài khoản mới ở mục "Chờ duyệt".
+                      </p>
+                    ) : (
+                      assignableUsers.map((u) => {
+                        const isMember = memberIds.includes(u.user_id);
+                        return (
+                          <label
+                            key={u.user_id}
+                            className="flex items-center justify-between gap-2 p-2.5 rounded-[12px] bg-card-alt border border-border cursor-pointer"
+                          >
+                            <span className="min-w-0">
+                              <span className="block text-sm font-bold text-ink truncate">
+                                {u.display_name || 'Không tên'}
+                              </span>
+                              <span className="block text-xs text-ink-soft">{ROLE_LABELS[u.role]}</span>
+                            </span>
+
+                            <input
+                              type="checkbox"
+                              checked={isMember}
+                              disabled={savingMember === u.user_id}
+                              onChange={(e) => toggleMembership(p.id, u.user_id, e.target.checked)}
+                              className="w-5 h-5 accent-[var(--accent)] shrink-0 cursor-pointer"
+                            />
+                          </label>
+                        );
+                      })
+                    )}
+
+                    <p className="text-xs text-ink-soft">
+                      Chỉ quản trị viên phân công được. Người dùng và khách chỉ thấy công trình họ được phân công.
+                    </p>
                   </div>
                 )}
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* New signups. Above the team panel and always expanded -- it is the one
+          thing on this screen with someone waiting at the other end. They are
+          not blocked while they wait: they can already read the demo project. */}
+      {admin && newAccounts.length > 0 && (
+        <div className="card p-4 space-y-3 border-accent/40">
+          <span className="flex items-center gap-2 text-sm font-bold text-ink">
+            <Clock className="w-4 h-4 text-accent" />
+            Tài khoản mới ({newAccounts.length})
+          </span>
+
+          <div className="space-y-2">
+            {newAccounts.map((u) => (
+              <div key={u.user_id} className="p-2.5 rounded-[12px] bg-card-alt border border-border space-y-2">
+                <div className="min-w-0">
+                  <p className="text-sm font-bold text-ink truncate">{u.display_name || 'Không tên'}</p>
+                  <p className="text-xs text-ink-soft truncate">
+                    {ROLE_LABELS[u.role]}
+                    {u.company ? ` · ${u.company}` : ''}
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  {ASSIGNABLE_ROLES.filter((r) => r !== 'guest').map((r) => (
+                    <button
+                      key={r}
+                      disabled={savingRole === u.user_id}
+                      onClick={() => approveUser(u.user_id, r)}
+                      className="px-3 py-2 rounded-[12px] border border-border text-xs font-bold text-ink hover:border-border-strong transition disabled:opacity-50"
+                    >
+                      Cấp quyền · {ROLE_LABELS[r]}
+                    </button>
+                  ))}
+
+                  <button
+                    disabled={savingRole === u.user_id}
+                    onClick={() => keepAsGuest(u.user_id)}
+                    className="px-3 py-2 rounded-[12px] border border-border text-xs font-bold text-ink-soft hover:text-ink hover:border-border-strong transition disabled:opacity-50"
+                  >
+                    Giữ làm khách
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <p className="text-xs text-ink-soft">
+            Tài khoản mới tự vào công trình demo với quyền khách (chỉ xem). Cấp quyền "Người dùng" để họ ghi được nhật
+            ký, rồi phân công vào công trình của họ — người dùng chỉ thấy công trình được phân công.
+          </p>
         </div>
       )}
 
@@ -346,7 +542,7 @@ export const ProjectsRoute: React.FC<ProjectsRouteProps> = ({
                     onChange={(e) => changeRole(u.user_id, e.target.value as UserRole)}
                     className="field px-2.5 py-2 text-sm font-bold cursor-pointer shrink-0"
                   >
-                    {(Object.keys(ROLE_LABELS) as UserRole[]).map((r) => (
+                    {ASSIGNABLE_ROLES.map((r) => (
                       <option key={r} value={r}>
                         {ROLE_LABELS[r]}
                       </option>

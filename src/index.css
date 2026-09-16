@@ -402,18 +402,31 @@
   }
 }
 
+/* Y-axis only -- deliberately no translateX here.
+ *
+ * The only consumer (src/components/Toast.tsx) centres itself with Tailwind's
+ * `-translate-x-1/2`, which in Tailwind v4 compiles to the standalone CSS
+ * `translate` property, NOT to `transform`. `translate` and `transform`
+ * compose rather than override, so a `translate(-50%, ...)` in these keyframes
+ * stacked on top of it and shifted the toast a full 100% left: measured at
+ * left:-150px in a 375px viewport, i.e. ~40% of every toast rendered off the
+ * screen on a phone. Mic-permission errors, save failures and AI errors were
+ * all firing correctly and were simply unreadable on mobile.
+ *
+ * Keep the X-centring in the class and the motion in the keyframes; don't
+ * reintroduce a translateX here. */
 @keyframes bounce-in {
   0% {
     opacity: 0;
-    transform: translate(-50%, -16px) scale(0.96);
+    transform: translateY(-16px) scale(0.96);
   }
   60% {
     opacity: 1;
-    transform: translate(-50%, 4px) scale(1.01);
+    transform: translateY(4px) scale(1.01);
   }
   100% {
     opacity: 1;
-    transform: translate(-50%, 0) scale(1);
+    transform: translateY(0) scale(1);
   }
 }
 

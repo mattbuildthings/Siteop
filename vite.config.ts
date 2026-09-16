@@ -80,7 +80,17 @@ export default defineConfig({
     react(),
     tailwindcss(),
     VitePWA({
-      registerType: 'autoUpdate',
+      // 'prompt', not 'autoUpdate', and registered by hand in
+      // src/components/UpdatePrompt.tsx rather than by the injected script.
+      //
+      // 'autoUpdate' reloads the page the moment a new worker takes over, which
+      // would discard an unsaved capture -- a recording made but not yet
+      // filed, or a transcript someone just corrected. It also never actually
+      // checked for updates: on the 2026-09-16 deploy the app kept serving the
+      // previous bundle from cache until update() was called explicitly.
+      // UpdatePrompt does the polling and lets the user choose the moment.
+      registerType: 'prompt',
+      injectRegister: null,
       includeAssets: ['favicon.svg', 'apple-touch-icon.png', 'pwa-192x192.png', 'pwa-512x512.png'],
       manifest: {
         name: 'Siteop - Site Operations Diary',

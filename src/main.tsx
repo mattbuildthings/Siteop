@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import { LanguageProvider } from './lib/i18n';
 import { Button } from './components/ui/Button';
+import { UpdatePrompt } from './components/UpdatePrompt';
 import './index.css';
 
 interface Props {
@@ -54,6 +55,10 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     <ErrorBoundary>
       <LanguageProvider>
         <App />
+        {/* Outside App so the update notice survives every auth and route
+            state -- including the sign-in screen, where a stale bundle is just
+            as much of a problem. */}
+        <UpdatePrompt />
       </LanguageProvider>
     </ErrorBoundary>
   </React.StrictMode>

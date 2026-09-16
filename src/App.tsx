@@ -15,8 +15,10 @@ import {
   fetchOrCreateProfile,
   fetchProjects,
   getStoredProjectId,
+  isPending,
   storeProjectId
 } from './lib/session';
+import { PendingApprovalScreen } from './components/PendingApprovalScreen';
 import { User } from '@supabase/supabase-js';
 
 const ROUTES: RouteId[] = ['capture', 'diary', 'digest', 'projects', 'sync'];
@@ -244,6 +246,13 @@ export function App() {
   // membership -- there is nothing meaningful to show a signed-out visitor.
   if (!user) {
     return <AuthScreen onSuccess={() => setAuthChecked(true)} />;
+  }
+
+  // Signed in but not yet approved. The database already returns nothing to a
+  // 'pending' account, so without this the app would render as a set of empty
+  // screens and look broken rather than deliberately closed.
+  if (isPending(profile)) {
+    return <PendingApprovalScreen profile={profile} onSignOut={handleSignOut} />;
   }
 
   return (

@@ -63,13 +63,21 @@ export type EntryStatus = 'draft' | 'filed' | 'archived' | 'error';
 //   user  — create + edit own entries, file/lock own entries, see projects
 //           they belong to. Cannot manage projects, users, or others' entries.
 //   guest — read-only on projects they belong to.
-export type UserRole = 'admin' | 'user' | 'guest';
+//   pending — a brand-new signup nobody has approved yet. Sees an "awaiting
+//           approval" screen and nothing else. Cannot read or write any site
+//           data. See supabase/migrations/20260917_roles_approval_and_membership.sql.
+export type UserRole = 'admin' | 'user' | 'guest' | 'pending';
 
 export const ROLE_LABELS: Record<UserRole, string> = {
   admin: 'Quản trị',
   user: 'Người dùng',
-  guest: 'Khách (chỉ xem)'
+  guest: 'Khách (chỉ xem)',
+  pending: 'Chờ duyệt'
 };
+
+/** Roles an admin can assign from the team panel. `pending` is a state an
+ *  account arrives in, not a role you hand someone, so it is not offered. */
+export const ASSIGNABLE_ROLES: UserRole[] = ['admin', 'user', 'guest'];
 
 export interface UserProfile {
   user_id: string;
